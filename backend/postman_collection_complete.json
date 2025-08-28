@@ -1,0 +1,193 @@
+{
+  "info": {
+    "_postman_id": "d9b0f6e1-3e1c-4cd0-9e3c-1f0a5a2a9b21",
+    "name": "Secure Group Messaging API (Complete)",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Generated from openapi/openapi.yaml. Includes all endpoints. Set {{baseUrl}} and use Auth → Login to populate tokens."
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "groupId", "value": "1" },
+    { "key": "joinReqId", "value": "1" }
+  ],
+  "item": [
+    { "name": "Health", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/healthz" } },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}" },
+            "url": "{{baseUrl}}/api/v1/auth/register"
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}" },
+            "url": "{{baseUrl}}/api/v1/auth/login"
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "let data; try { data = pm.response.json(); } catch(e){}",
+              "if (data) {",
+              "  if (data.access) pm.collectionVariables.set('accessToken', data.access);",
+              "  if (data.refresh) pm.collectionVariables.set('refreshToken', data.refresh);",
+              "}",
+              "pm.test('Access token saved', () => pm.expect(pm.collectionVariables.get('accessToken')).to.be.ok);"
+            ] } }
+          ]
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}" },
+            "url": "{{baseUrl}}/api/v1/auth/refresh"
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "let data; try { data = pm.response.json(); } catch(e){}",
+              "if (data && data.access) pm.collectionVariables.set('accessToken', data.access);",
+              "pm.test('Access token refreshed', () => pm.expect(pm.collectionVariables.get('accessToken')).to.be.ok);"
+            ] } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Groups",
+      "item": [
+        {
+          "name": "List groups",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/groups?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","groups"],
+              "query": [ { "key": "limit", "value": "50" } ]
+            }
+          }
+        },
+        {
+          "name": "Create group",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Test Group\",\n  \"type\": \"open\",\n  \"max_members\": 50\n}" },
+            "url": "{{baseUrl}}/api/v1/groups"
+          }
+        },
+        {
+          "name": "Join group",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": "{{baseUrl}}/api/v1/groups/{{groupId}}/join"
+          }
+        },
+        {
+          "name": "Leave group",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": "{{baseUrl}}/api/v1/groups/{{groupId}}/leave"
+          }
+        },
+        {
+          "name": "Transfer owner",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"new_owner_id\": 2\n}" },
+            "url": "{{baseUrl}}/api/v1/groups/{{groupId}}/transfer-owner"
+          }
+        },
+        {
+          "name": "Delete group",
+          "request": {
+            "method": "DELETE",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": "{{baseUrl}}/api/v1/groups/{{groupId}}"
+          }
+        },
+        {
+          "name": "Banish user",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"user_id\": 3,\n  \"reason\": \"spam\"\n}" },
+            "url": "{{baseUrl}}/api/v1/groups/{{groupId}}/banish"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Join Requests",
+      "item": [
+        {
+          "name": "List pending",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": "{{baseUrl}}/api/v1/groups/{{groupId}}/join-requests"
+          }
+        },
+        {
+          "name": "Approve",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": "{{baseUrl}}/api/v1/groups/{{groupId}}/join-requests/{{joinReqId}}/approve"
+          }
+        },
+        {
+          "name": "Decline",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": "{{baseUrl}}/api/v1/groups/{{groupId}}/join-requests/{{joinReqId}}/decline"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "Send message",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"hello world\"\n}" },
+            "url": "{{baseUrl}}/api/v1/groups/{{groupId}}/messages"
+          }
+        },
+        {
+          "name": "List messages",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/groups/{{groupId}}/messages?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","v1","groups","{{groupId}}","messages"],
+              "query": [ { "key": "limit", "value": "50" } ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
