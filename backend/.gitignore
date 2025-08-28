@@ -1,0 +1,13 @@
+# Binaries
+server
+
+# IDE
+.vscode/
+.idea/
+
+# Go
+bin/
+coverage.out
+
+# Env
+.env

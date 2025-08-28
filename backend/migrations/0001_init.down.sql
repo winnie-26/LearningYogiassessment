@@ -1,0 +1,14 @@
+DROP TABLE IF EXISTS push_tokens;
+DROP INDEX IF EXISTS idx_refresh_tokens_user;
+DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS bans;
+DROP INDEX IF EXISTS idx_messages_sender;
+DROP INDEX IF EXISTS idx_messages_group_time;
+DROP TABLE IF EXISTS messages;
+DROP INDEX IF EXISTS idx_join_requests_group;
+DROP TABLE IF EXISTS join_requests;
+DROP INDEX IF EXISTS idx_group_members_user;
+DROP TABLE IF EXISTS group_members;
+DROP INDEX IF EXISTS idx_groups_owner;
+DROP TABLE IF EXISTS groups;
+DROP TABLE IF EXISTS users;
