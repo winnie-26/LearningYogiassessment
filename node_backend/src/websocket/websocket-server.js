@@ -51,30 +51,41 @@ class WebSocketServer {
 
   async handleMessage(ws, message) {
     const { type } = message;
+    console.log(`[WebSocket] Received message type: ${type}`, message);
 
-    switch (type) {
-      case 'auth':
-        await this.handleAuth(ws, message);
-        break;
-      case 'join_group':
-        await this.handleJoinGroup(ws, message);
-        break;
-      case 'message':
-        await this.handleChatMessage(ws, message);
-        break;
-      case 'ping':
-        this.sendMessage(ws, { type: 'pong' });
-        break;
-      default:
-        this.sendError(ws, 'Unknown message type');
+    try {
+      switch (type) {
+        case 'auth':
+          await this.handleAuth(ws, message);
+          break;
+        case 'join_group':
+          await this.handleJoinGroup(ws, message);
+          break;
+        case 'message':
+          await this.handleChatMessage(ws, message);
+          break;
+        case 'ping':
+          console.log('[WebSocket] Received ping, sending pong');
+          this.sendMessage(ws, { type: 'pong' });
+          break;
+        default:
+          console.log(`[WebSocket] Unknown message type: ${type}`);
+          this.sendError(ws, 'Unknown message type');
+      }
+    } catch (error) {
+      console.error(`[WebSocket] Error handling message type ${type}:`, error);
+      this.sendError(ws, `Error processing message: ${error.message}`);
     }
   }
 
   async handleAuth(ws, message) {
+    console.log('[WebSocket] Handling auth message:', message);
     const { token, groupId } = message;
 
     if (!token) {
-      this.sendError(ws, 'Token required');
+      const error = 'Token required';
+      console.error(`[WebSocket] ${error}`);
+      this.sendError(ws, error);
       return ws.close(StatusCodes.UNAUTHORIZED);
     }
 
@@ -113,10 +124,13 @@ class WebSocketServer {
   }
 
   async handleJoinGroup(ws, message) {
+    console.log('[WebSocket] Handling join group:', message);
     const { groupId } = message;
     
     if (!ws.userId) {
-      this.sendError(ws, 'Not authenticated');
+      const error = 'Not authenticated';
+      console.error(`[WebSocket] ${error}`);
+      this.sendError(ws, error);
       return;
     }
 

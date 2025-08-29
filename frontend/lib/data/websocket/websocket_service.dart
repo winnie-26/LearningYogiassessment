@@ -17,8 +17,12 @@ class WebSocketService {
   bool get isConnected => _isConnected;
 
   Future<void> connect(String groupId, String token) async {
-    if (_currentGroupId == groupId && _isConnected) return;
+    if (_currentGroupId == groupId && _isConnected) {
+      print('WebSocket: Already connected to group $groupId');
+      return;
+    }
     
+    print('WebSocket: Connecting to group $groupId...');
     await disconnect();
     
     try {
@@ -27,27 +31,34 @@ class WebSocketService {
       
       // WebSocket URL for Render deployment (wss for secure WebSocket)
       final wsUrl = 'wss://learningyogiassessment-2.onrender.com/ws';
-      print('Connecting to WebSocket: $wsUrl'); // Debug log
+      print('WebSocket: Connecting to $wsUrl');
       
       _channel = WebSocketChannel.connect(
         Uri.parse(wsUrl),
-        // Add authorization header if your backend supports it
-        // protocols: ['Bearer $token'],
       );
 
       // Listen for incoming messages
       _channel!.stream.listen(
         (data) {
           try {
-            print('WebSocket received: $data'); // Debug log
-            final message = jsonDecode(data);
-            print('Parsed message: $message'); // Debug log
+            print('WebSocket: Received data: $data');
+            final message = jsonDecode(data) as Map<String, dynamic>;
+            print('WebSocket: Parsed message: $message');
             
-            // Only forward new_message types to the message controller
-            if (message['type'] == 'new_message') {
-              _messageController?.add(message);
-            } else {
-              print('Ignoring non-message type: ${message['type']}');
+            // Handle different message types
+            switch (message['type']) {
+              case 'new_message':
+                print('WebSocket: Forwarding new message to controller');
+                _messageController?.add(message);
+                break;
+              case 'pong':
+                print('WebSocket: Received pong');
+                break;
+              case 'error':
+                print('WebSocket: Error from server: ${message['message']}');
+                break;
+              default:
+                print('WebSocket: Ignoring message type: ${message['type']}');
             }
           } catch (e) {
             print('Error parsing WebSocket message: $e');
@@ -65,17 +76,27 @@ class WebSocketService {
         },
       );
 
-      // Send authentication message
+          // Send authentication message
       final authMessage = {
         'type': 'auth',
         'token': token,
         'groupId': groupId,
       };
-      print('Sending auth message: $authMessage'); // Debug log
+      print('WebSocket: Sending auth message: $authMessage');
       _channel!.sink.add(jsonEncode(authMessage));
+
+      // Send join group message after a short delay to ensure auth is processed
+      await Future.delayed(const Duration(milliseconds: 300));
+      final joinMessage = {
+        'type': 'join_group',
+        'groupId': groupId,
+      };
+      print('WebSocket: Sending join group message: $joinMessage');
+      _channel!.sink.add(jsonEncode(joinMessage));
 
       _isConnected = true;
       _startHeartbeat();
+      print('WebSocket: Connection established and authenticated');
       
     } catch (e) {
       print('Failed to connect WebSocket: $e');
@@ -85,49 +106,76 @@ class WebSocketService {
 
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 25), (timer) {
       if (_isConnected && _channel != null) {
-        _channel!.sink.add(jsonEncode({'type': 'ping'}));
+        try {
+          final ping = {'type': 'ping'};
+          print('WebSocket: Sending heartbeat ping');
+          _channel!.sink.add(jsonEncode(ping));
+        } catch (e) {
+          print('WebSocket: Error sending heartbeat: $e');
+          _isConnected = false;
+          _reconnect();
+        }
       }
     });
   }
 
   void _reconnect() {
     if (_currentGroupId != null) {
-      Timer(Duration(seconds: 3), () {
-        // You'll need to get the token again for reconnection
-        // This is a simplified version - you might want to store the token
+      Timer(const Duration(seconds: 3), () {
         print('Attempting to reconnect WebSocket...');
+        // Reconnect logic here
       });
     }
   }
 
   void sendMessage(String text, String senderId) {
-    if (_isConnected && _channel != null) {
-      final messageData = {
-        'type': 'message',
-        'text': text,
-        'sender_id': senderId,
-        'group_id': _currentGroupId,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-      print('Sending WebSocket message: $messageData'); // Debug log
+    if (!_isConnected || _channel == null) {
+      print('WebSocket: Cannot send message - not connected');
+      return;
+    }
+    
+    final messageData = {
+      'type': 'message',
+      'text': text,
+      'sender_id': senderId,
+      'group_id': _currentGroupId,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    
+    print('Sending WebSocket message: $messageData');
+    try {
       _channel!.sink.add(jsonEncode(messageData));
-    } else {
-      print('WebSocket not connected, cannot send message'); // Debug log
+    } catch (e) {
+      print('Error sending WebSocket message: $e');
+      _isConnected = false;
+      _reconnect();
     }
   }
 
   Future<void> disconnect() async {
+    print('WebSocket: Disconnecting...');
     _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    
+    if (_channel != null) {
+      try {
+        await _channel!.sink.close();
+      } catch (e) {
+        print('Error closing WebSocket: $e');
+      }
+      _channel = null;
+    }
+    
     _isConnected = false;
     _currentGroupId = null;
     
-    await _channel?.sink.close();
-    _channel = null;
-    
-    await _messageController?.close();
-    _messageController = null;
+    if (_messageController != null && !_messageController!.isClosed) {
+      await _messageController!.close();
+      _messageController = null;
+    }
+    print('WebSocket: Disconnected');
   }
 }
 
