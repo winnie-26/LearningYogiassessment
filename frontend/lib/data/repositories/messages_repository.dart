@@ -1,16 +1,48 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 import '../api/api_client.dart';
+import '../websocket/websocket_service.dart';
+import 'auth_repository.dart';
 
 final messagesRepositoryProvider = Provider<MessagesRepository>((ref) {
   final api = ref.read(apiClientProvider);
-  return MessagesRepository(api);
+  final webSocket = ref.read(webSocketServiceProvider);
+  final auth = ref.read(authRepositoryProvider);
+  return MessagesRepository(api, webSocket, auth);
 });
 
 class MessagesRepository {
-  MessagesRepository(this._api);
+  MessagesRepository(this._api, this._webSocket, this._auth);
   final ApiClient _api;
+  final WebSocketService _webSocket;
+  final AuthRepository _auth;
 
-  Future<void> send(int groupId, String text) => _api.sendMessage(groupId, text).then((_) {});
+  // Connect to WebSocket for real-time messages
+  Future<void> connectToGroup(int groupId) async {
+    final token = await _auth.getToken();
+    if (token != null) {
+      await _webSocket.connect(groupId.toString(), token);
+    }
+  }
+
+  // Get real-time message stream
+  Stream<Map<String, dynamic>> get messageStream => _webSocket.messageStream;
+
+  // Send message via API and WebSocket
+  Future<void> send(int groupId, String text) async {
+    // Send via API first
+    await _api.sendMessage(groupId, text);
+    
+    // Also send via WebSocket for real-time delivery
+    final user = await _auth.getCurrentUser();
+    final senderId = user?['id']?.toString() ?? '';
+    _webSocket.sendMessage(text, senderId);
+  }
+
+  // Disconnect WebSocket
+  Future<void> disconnect() async {
+    await _webSocket.disconnect();
+  }
   
   Future<List<dynamic>> list(int groupId, {int? limit, String? before}) async {
     final res = await _api.listMessages(groupId, limit: limit, before: before);

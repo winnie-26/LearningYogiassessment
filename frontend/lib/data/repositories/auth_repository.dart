@@ -113,4 +113,16 @@ class AuthRepository {
     }
     if (access != null) await _storage.write(key: 'accessToken', value: access);
   }
+
+  Future<String?> getToken() async {
+    return await _storage.read(key: 'accessToken');
+  }
+
+  Future<Map<String, dynamic>?> getCurrentUser() async {
+    final userId = await _storage.read(key: 'current_user_id');
+    if (userId != null) {
+      return {'id': userId};
+    }
+    return null;
+  }
 }

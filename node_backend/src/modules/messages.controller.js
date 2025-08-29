@@ -4,6 +4,12 @@ async function send(req, res, next) {
   try {
     const { text } = req.body || {};
     const msg = await svc.send(req.params.id, req.user.sub, text);
+    
+    // Broadcast message to WebSocket clients
+    if (global.wsServer) {
+      global.wsServer.broadcastNewMessage(req.params.id, msg);
+    }
+    
     res.status(201).json(msg);
   } catch (e) { next(e); }
 }

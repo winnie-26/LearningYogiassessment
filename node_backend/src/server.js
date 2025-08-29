@@ -1,6 +1,8 @@
 require('dotenv').config();
+const http = require('http');
 const app = require('./app');
 const { migrate, isDbEnabled } = require('./data/db');
+const WebSocketServer = require('./websocket/websocket-server');
 
 async function start() {
   try {
@@ -11,10 +13,22 @@ async function start() {
     // eslint-disable-next-line no-console
     console.error('[server] migration failed:', e);
   }
+  
   const PORT = process.env.PORT || 8080;
-  app.listen(PORT, () => {
+  
+  // Create HTTP server
+  const server = http.createServer(app);
+  
+  // Initialize WebSocket server
+  const wsServer = new WebSocketServer(server);
+  wsServer.startHeartbeat();
+  
+  // Make WebSocket server available globally for message broadcasting
+  global.wsServer = wsServer;
+  
+  server.listen(PORT, () => {
     // eslint-disable-next-line no-console
-    console.log(`[server] listening on port ${PORT}`);
+    console.log(`[server] HTTP and WebSocket server listening on port ${PORT}`);
   });
 }
 
