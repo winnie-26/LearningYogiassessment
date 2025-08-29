@@ -206,48 +206,110 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
                     }();
                     final tlabel = _formatTime(fmAt) ?? timeLabel;
 
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      child: ListTile(
-                        title: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                name,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                                overflow: TextOverflow.ellipsis,
+                    return ListTile(
+                      title: Text(
+                        name,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: fl != null
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 2.0),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    flex: 7,
+                                    child: Text(
+                                      fl,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context).textTheme.bodyMedium,
+                                    ),
+                                  ),
+                                  if (tlabel.isNotEmpty)
+                                    Expanded(
+                                      flex: 3,
+                                      child: Align(
+                                        alignment: Alignment.topRight,
+                                        child: Text(
+                                          tlabel,
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
-                            ),
-                            if (tlabel.isNotEmpty)
-                              Text(
-                                tlabel,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
-                              ),
-                          ],
-                        ),
-                        subtitle: fl != null
-                            ? Padding(
-                                padding: const EdgeInsets.only(left: 0.0, top: 2.0),
-                                child: Text(
-                                  fl,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              )
-                            : null,
-                        trailing: _sentRequests.contains(id)
-                            ? const Padding(
-                                padding: EdgeInsets.only(left: 8.0),
-                                child: Chip(label: Text('Requested')),
-                              )
-                            : null,
-                        onTap: () async {
-                          final repo = ref.read(groupsRepositoryProvider);
-                          final api = ref.read(apiClientProvider);
-                          // If already joined, go straight to chat
-                          if (_isJoined(g)) {
+                            )
+                          : tlabel.isNotEmpty
+                              ? Padding(
+                                  padding: const EdgeInsets.only(top: 2.0),
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Text(
+                                      tlabel,
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                                    ),
+                                  ),
+                                )
+                              : null,
+                      trailing: _sentRequests.contains(id)
+                          ? const Padding(
+                              padding: EdgeInsets.only(left: 8.0),
+                              child: Chip(label: Text('Requested')),
+                            )
+                          : null,
+                      onTap: () async {
+                        final repo = ref.read(groupsRepositoryProvider);
+                        final api = ref.read(apiClientProvider);
+                        // If already joined, go straight to chat
+                        if (_isJoined(g)) {
+                          if (!context.mounted) return;
+                          Navigator.of(context).pushNamed(
+                            '/chat',
+                            arguments: {
+                              'id': id,
+                              'name': name,
+                              'isPrivate': isPrivate,
+                              'ownerId': g['owner_id'],
+                            },
+                          );
+                          return;
+                        }
+                    
+                        // Prevent duplicate requests for private groups
+                        if (isPrivate && _sentRequests.contains(id)) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Join request already sent')),
+                          );
+                          return;
+                        }
+                    
+                        try {
+                          // Ask backend whether we can join directly
+                          final res = await api.canJoinGroup(id);
+                          final body = res.data;
+                          bool canJoin = false;
+                          bool needsInvite = isPrivate;
+                          bool isFull = false;
+                          if (body is Map) {
+                            final map = body.cast<String, dynamic>();
+                            canJoin = map['canJoin'] == true || map['allowed'] == true;
+                            needsInvite = map['requiresInvite'] == true || map['isPrivate'] == true || map['reason'] == 'invitation_required' || needsInvite;
+                            isFull = map['reason'] == 'group_full' || (map['message']?.toString().toLowerCase().contains('maximum') ?? false);
+                          }
+                    
+                          if (isFull) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('This group is full.')),
+                            );
+                            return;
+                          }
+                    
+                          if (canJoin && !needsInvite) {
+                            await repo.join(id);
                             if (!context.mounted) return;
                             Navigator.of(context).pushNamed(
                               '/chat',
@@ -260,39 +322,32 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
                             );
                             return;
                           }
-
-                          // Prevent duplicate requests for private groups
-                          if (isPrivate && _sentRequests.contains(id)) {
+                    
+                          // Private or needs invite: prompt to send join request
+                          if (!context.mounted) return;
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Request to join?'),
+                              content: Text('"$name" is a private group. Send a join request to the owner?'),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                                ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Send request')),
+                              ],
+                            ),
+                          );
+                          if (confirm == true) {
+                            await api.createJoinRequest(id);
+                            setState(() { _sentRequests.add(id); });
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Join request already sent')),
+                              const SnackBar(content: Text('Join request sent')),
                             );
-                            return;
                           }
-
-                          try {
-                            // Ask backend whether we can join directly
-                            final res = await api.canJoinGroup(id);
-                            final body = res.data;
-                            bool canJoin = false;
-                            bool needsInvite = isPrivate;
-                            bool isFull = false;
-                            if (body is Map) {
-                              final map = body.cast<String, dynamic>();
-                              canJoin = map['canJoin'] == true || map['allowed'] == true;
-                              needsInvite = map['requiresInvite'] == true || map['isPrivate'] == true || map['reason'] == 'invitation_required' || needsInvite;
-                              isFull = map['reason'] == 'group_full' || (map['message']?.toString().toLowerCase().contains('maximum') ?? false);
-                            }
-
-                            if (isFull) {
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('This group is full.')),
-                              );
-                              return;
-                            }
-
-                            if (canJoin && !needsInvite) {
+                        } catch (e) {
+                          // Fallback: if public, attempt to join; else show prompt
+                          if (!isPrivate) {
+                            try {
                               await repo.join(id);
                               if (!context.mounted) return;
                               Navigator.of(context).pushNamed(
@@ -304,16 +359,19 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
                                   'ownerId': g['owner_id'],
                                 },
                               );
-                              return;
+                            } catch (e2) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to join: $e2')),
+                              );
                             }
-
-                            // Private or needs invite: prompt to send join request
+                          } else {
                             if (!context.mounted) return;
                             final confirm = await showDialog<bool>(
                               context: context,
                               builder: (ctx) => AlertDialog(
                                 title: const Text('Request to join?'),
-                                content: Text('"$name" is a private group. Send a join request to the owner?'),
+                                content: Text('Send a join request to "${name}"?'),
                                 actions: [
                                   TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
                                   ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Send request')),
@@ -321,138 +379,107 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
                               ),
                             );
                             if (confirm == true) {
-                              await api.createJoinRequest(id);
-                              setState(() { _sentRequests.add(id); });
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Join request sent')),
-                              );
-                            }
-                          } catch (e) {
-                            // Fallback: if public, attempt to join; else show prompt
-                            if (!isPrivate) {
                               try {
-                                await repo.join(id);
-                                if (!context.mounted) return;
-                                Navigator.of(context).pushNamed(
-                                  '/chat',
-                                  arguments: {
-                                    'id': id,
-                                    'name': name,
-                                    'isPrivate': isPrivate,
-                                    'ownerId': g['owner_id'],
-                                  },
-                                );
-                              } catch (e2) {
-                                if (!context.mounted) return;
+                                final api = ref.read(apiClientProvider);
+                                await api.createJoinRequest(id);
+                                setState(() { _sentRequests.add(id); });
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Failed to join: $e2')),
+                                  const SnackBar(content: Text('Join request sent')),
                                 );
-                              }
-                            } else {
-                              if (!context.mounted) return;
-                              final confirm = await showDialog<bool>(
-                                context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: const Text('Request to join?'),
-                                  content: Text('Send a join request to "${name}"?'),
-                                  actions: [
-                                    TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-                                    ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Send request')),
-                                  ],
-                                ),
-                              );
-                              if (confirm == true) {
-                                try {
-                                  final api = ref.read(apiClientProvider);
-                                  await api.createJoinRequest(id);
-                                  setState(() { _sentRequests.add(id); });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Join request sent')),
-                                  );
-                                } catch (e3) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Failed to send request: $e3')),
-                                  );
-                                }
+                              } catch (e3) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Failed to send request: $e3')),
+                                );
                               }
                             }
                           }
-                        },
-                      ),
+                        }
+                      },
                     );
                   },
                   loading: () {
                     // Show tile without last message/time while loading
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      child: ListTile(
-                        title: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                name,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                    return ListTile(
+                      title: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ],
-                        ),
-                        onTap: () => Navigator.of(context).pushNamed(
-                          '/chat',
-                          arguments: {
-                            'id': id,
-                            'name': name,
-                            'isPrivate': isPrivate,
-                            'ownerId': g['owner_id'],
-                          },
-                        ),
+                          ),
+                        ],
+                      ),
+                      onTap: () => Navigator.of(context).pushNamed(
+                        '/chat',
+                        arguments: {
+                          'id': id,
+                          'name': name,
+                          'isPrivate': isPrivate,
+                          'ownerId': g['owner_id'],
+                        },
                       ),
                     );
                   },
                   error: (e, st) {
                     // Fallback to previously computed values
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      child: ListTile(
-                        title: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                name,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                                overflow: TextOverflow.ellipsis,
+                    return ListTile(
+                      title: Text(
+                        name,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: lastLine != null
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 2.0),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    flex: 7,
+                                    child: Text(
+                                      lastLine,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context).textTheme.bodyMedium,
+                                    ),
+                                  ),
+                                  if (timeLabel.isNotEmpty)
+                                    Expanded(
+                                      flex: 3,
+                                      child: Align(
+                                        alignment: Alignment.topRight,
+                                        child: Text(
+                                          timeLabel,
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
-                            ),
-                            if (timeLabel.isNotEmpty)
-                              Text(
-                                timeLabel,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
-                              ),
-                          ],
-                        ),
-                        subtitle: lastLine != null
-                            ? Padding(
-                                padding: const EdgeInsets.only(left: 0.0, top: 2.0),
-                                child: Text(
-                                  lastLine,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              )
-                            : null,
-                        onTap: () => Navigator.of(context).pushNamed(
-                          '/chat',
-                          arguments: {
-                            'id': id,
-                            'name': name,
-                            'isPrivate': isPrivate,
-                            'ownerId': g['owner_id'],
-                          },
-                        ),
+                            )
+                          : timeLabel.isNotEmpty
+                              ? Padding(
+                                  padding: const EdgeInsets.only(top: 2.0),
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Text(
+                                      timeLabel,
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                                    ),
+                                  ),
+                                )
+                              : null,
+                      onTap: () => Navigator.of(context).pushNamed(
+                        '/chat',
+                        arguments: {
+                          'id': id,
+                          'name': name,
+                          'isPrivate': isPrivate,
+                          'ownerId': g['owner_id'],
+                        },
                       ),
                     );
                   },
@@ -479,21 +506,7 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final result = await Navigator.of(context).pushNamed('/create-group');
-          if (result is Map && result['created'] == true) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Group created')),
-              );
-            }
-            ref.invalidate(groupsListProvider);
-          }
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Create'),
-      ),
+    
     );
   }
 }
@@ -513,7 +526,7 @@ class _SearchBar extends StatelessWidget {
         decoration: InputDecoration(
           hintText: 'Search groups',
           prefixIcon: const Icon(Icons.search),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(0)),
           isDense: true,
         ),
       ),

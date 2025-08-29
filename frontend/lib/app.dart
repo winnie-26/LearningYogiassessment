@@ -60,7 +60,65 @@ class _AppState extends State<App> {
     }
     return MaterialApp(
       title: 'Group Messaging',
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
+      theme: ThemeData(
+        colorScheme: const ColorScheme.light(
+          primary: Colors.black,
+          onPrimary: Colors.white,
+          secondary: Colors.grey,
+          onSecondary: Colors.black,
+          surface: Colors.white,
+          onSurface: Colors.black,
+          background: Colors.white,
+          onBackground: Colors.black,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          iconTheme: IconThemeData(color: Colors.white),
+          titleTextStyle: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        scaffoldBackgroundColor: Colors.white,
+        cardColor: Colors.white,
+        dividerColor: Colors.grey,
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.black),
+          bodyMedium: TextStyle(color: Colors.black),
+          bodySmall: TextStyle(color: Colors.grey),
+          titleLarge: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          titleMedium: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+          titleSmall: TextStyle(color: Colors.black),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.black,
+            side: const BorderSide(color: Colors.black),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.black,
+          ),
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: Colors.black),
+          ),
+          labelStyle: TextStyle(color: Colors.grey),
+          hintStyle: TextStyle(color: Colors.grey),
+        ),
+      ),
       home: _loggedIn ? const GroupsListScreen() : const LoginScreen(),
       routes: {
         '/login': (_) => const LoginScreen(),

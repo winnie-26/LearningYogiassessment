@@ -65,10 +65,16 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Group'),
+        title: const Text(
+          'Create Group',
+          style: TextStyle(color: Colors.white),
+        ),
         elevation: 0,
-        backgroundColor: theme.scaffoldBackgroundColor,
-        foregroundColor: theme.textTheme.titleLarge?.color,
+        backgroundColor: Colors.black,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         centerTitle: false,
       ),
       body: SafeArea(
@@ -122,19 +128,47 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
                           'Private (closed group)',
                           style: theme.textTheme.bodyLarge,
                         ),
-                        Row(
-                          children: [
-                            Text('No', style: theme.textTheme.bodyMedium),
-                            Switch(
-                              value: _groupType == 'private',
-                              onChanged: (v) {
-                                setState(() {
-                                  _groupType = v ? 'private' : 'public';
-                                });
-                              },
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _groupType = _groupType == 'private' ? 'public' : 'private';
+                            });
+                          },
+                          child: Container(
+                            width: 100,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: _groupType == 'private' ? Colors.black : Colors.grey[300],
+                              borderRadius: BorderRadius.circular(15),
                             ),
-                            Text('Yes', style: theme.textTheme.bodyMedium),
-                          ],
+                            child: Stack(
+                              children: [
+                                AnimatedPositioned(
+                                  duration: const Duration(milliseconds: 200),
+                                  left: _groupType == 'private' ? 2 : 52,
+                                  top: 2,
+                                  child: Container(
+                                    width: 46,
+                                    height: 26,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(13),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        _groupType == 'private' ? 'YES' : 'NO',
+                                        style: const TextStyle(
+                                          color: Colors.black,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),

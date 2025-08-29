@@ -291,6 +291,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scrollController.addListener(_onScroll);
 
         return Scaffold(
+          resizeToAvoidBottomInset: true,
           appBar: AppBar(
             title: Text(name),
             actions: [
@@ -347,6 +348,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         })();
                         final showSenderName = index == 0 || (currentSenderIdStr ?? '') != (prevSenderIdStr ?? '');
                         final messageText = message['text']?.toString() ?? '';
+                        final isCurrentUser = currentSenderIdStr != null && currentSenderIdStr.trim() == normalizedCurrentUserId;
+                        
+                        // Generate different shades for different users
+                        final senderHash = currentSenderIdStr?.hashCode ?? 0;
+                        final grayShades = [
+                          Colors.grey[100]!,
+                          Colors.grey[200]!,
+                          const Color(0xFFF5F5F5),
+                          const Color(0xFFEEEEEE),
+                          const Color(0xFFE8E8E8),
+                        ];
+                        final otherUserColor = grayShades[senderHash.abs() % grayShades.length];
                         final messageTime = (() {
                           final created = message['created_at'];
                           if (created == null) return '';
@@ -361,37 +374,116 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           }
                         })();
                             
-                        return Card(
+                        return Container(
                           margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-                          child: ListTile(
-                            title: showSenderName
-                                ? Text(
-                                    senderName,
-                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-                                  )
-                                : null,
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  messageText,
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w300),
-                                ),
-                                if (messageTime.isNotEmpty)
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: Text(
-                                      messageTime,
-                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                            fontStyle: FontStyle.italic,
-                                            color: Colors.grey[700],
-                                          ),
+                          alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
+                          child: IntrinsicWidth(
+                            child: Container(
+                              constraints: BoxConstraints(
+                                maxWidth: MediaQuery.of(context).size.width * 0.75,
+                                minWidth: 80,
+                              ),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: isCurrentUser ? Colors.black : otherUserColor,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
                                     ),
-                                  ),
-                              ],
-                            ),
-                            trailing: isOwner
-                                ? PopupMenuButton<String>(
+                                  ],
+                                ),
+                                child: Stack(
+                                  children: [
+                                    Padding(
+                                      padding: EdgeInsets.fromLTRB(12, 12, isOwner ? 36 : 12, 12),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (showSenderName)
+                                            Padding(
+                                              padding: const EdgeInsets.only(bottom: 4.0),
+                                              child: Text(
+                                                senderName,
+                                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                  fontWeight: FontWeight.w700,
+                                                  color: isCurrentUser ? Colors.white : Colors.black,
+                                                ),
+                                              ),
+                                            ),
+                                          Builder(
+                                            builder: (context) {
+                                              if (messageText.length > 30) {
+                                                // Long message: timestamp below
+                                                return Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      messageText,
+                                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                        fontWeight: FontWeight.w300,
+                                                        color: isCurrentUser ? Colors.white : Colors.black,
+                                                      ),
+                                                    ),
+                                                    if (messageTime.isNotEmpty)
+                                                      Padding(
+                                                        padding: const EdgeInsets.only(top: 4.0),
+                                                        child: Align(
+                                                          alignment: Alignment.centerRight,
+                                                          child: Text(
+                                                            messageTime,
+                                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                                  fontStyle: FontStyle.italic,
+                                                                  color: isCurrentUser ? Colors.white70 : Colors.grey[700],
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                  ],
+                                                );
+                                              } else {
+                                                // Short message: timestamp inline
+                                                return Row(
+                                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Flexible(
+                                                      child: Text(
+                                                        messageText,
+                                                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                          fontWeight: FontWeight.w300,
+                                                          color: isCurrentUser ? Colors.white : Colors.black,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (messageTime.isNotEmpty)
+                                                      Padding(
+                                                        padding: const EdgeInsets.only(left: 8.0),
+                                                        child: Text(
+                                                          messageTime,
+                                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                                fontStyle: FontStyle.italic,
+                                                                color: isCurrentUser ? Colors.white70 : Colors.grey[700],
+                                                              ),
+                                                        ),
+                                                      ),
+                                                  ],
+                                                );
+                                              }
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (isOwner)
+                                      Positioned(
+                                        top: 4,
+                                        right: 4,
+                                        child: PopupMenuButton<String>(
                                     onSelected: (value) async {
                                       if (value == 'delete') {
                                         try {
@@ -467,8 +559,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                       }
                                       return items;
                                     },
-                                  )
-                                : null,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         );
                       },
@@ -495,33 +591,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
+              Container(
+                color: Colors.black,
+                padding: const EdgeInsets.all(16.0),
                 child: Row(
                   children: [
                     Expanded(
-                      child: TextField(
-                        controller: _text,
-                        decoration: InputDecoration(
-                          hintText: 'Type a message...',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(25),
                         ),
-                        onSubmitted: (_) => _sendMessage(groupId),
+                        child: TextField(
+                          controller: _text,
+                          decoration: InputDecoration(
+                            hintText: 'Type Message',
+                            hintStyle: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 16,
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          ),
+                          onSubmitted: (_) => _sendMessage(groupId),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: _sending
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send),
-                      onPressed: _sending ? null : () => _sendMessage(groupId),
+                    const SizedBox(width: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: _sending
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                              )
+                            : const Icon(Icons.send, color: Colors.black),
+                        onPressed: _sending ? null : () => _sendMessage(groupId),
+                      ),
                     ),
                   ],
                 ),
@@ -547,6 +658,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _scrollController.addListener(_onScroll);
 
         return Scaffold(
+          resizeToAvoidBottomInset: true,
           appBar: AppBar(title: Text(name)),
           body: Column(
             children: [
@@ -600,6 +712,52 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
                   ),
+                ),
+              ),
+              Container(
+                color: Colors.black,
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(25),
+                        ),
+                        child: TextField(
+                          controller: _text,
+                          decoration: InputDecoration(
+                            hintText: 'Type Message',
+                            hintStyle: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 16,
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          ),
+                          onSubmitted: (_) => _sendMessage(groupId),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: _sending
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                              )
+                            : const Icon(Icons.send, color: Colors.black),
+                        onPressed: _sending ? null : () => _sendMessage(groupId),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
