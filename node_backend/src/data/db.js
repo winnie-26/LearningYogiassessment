@@ -21,19 +21,84 @@ async function migrate() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS groups (
       id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
+      name TEXT NOT NULL UNIQUE,
       type TEXT NOT NULL,
       max_members INTEGER NOT NULL,
-      owner_id INTEGER NOT NULL REFERENCES users(id)
+      owner_id INTEGER NOT NULL REFERENCES users(id),
+      encrypted_group_key TEXT,
+      key_nonce TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      deleted_at TIMESTAMPTZ
     );
   `);
+  
+  // First ensure all columns exist
+  await pool.query(`
+    ALTER TABLE groups 
+      ADD COLUMN IF NOT EXISTS encrypted_group_key TEXT,
+      ADD COLUMN IF NOT EXISTS key_nonce TEXT,
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now(),
+      ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+  `);
+
+  // Handle duplicate group names
+  const dupCheck = await pool.query(`
+    SELECT name, COUNT(*) as count 
+    FROM groups 
+    GROUP BY name 
+    HAVING COUNT(*) > 1
+    LIMIT 1
+  `);
+
+  if (dupCheck.rows.length > 0) {
+    // Create a temporary table to store the new names
+    await pool.query(`
+      CREATE TEMP TABLE temp_group_names AS 
+      SELECT 
+        id, 
+        name,
+        ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) as rn 
+      FROM groups;
+      
+      -- Update duplicate names with a suffix
+      UPDATE groups g
+      SET name = g.name || '_' || t.rn
+      FROM temp_group_names t
+      WHERE g.id = t.id AND t.rn > 1;
+      
+      DROP TABLE temp_group_names;
+    `);
+  }
+
+  // Now add the unique constraint if it doesn't exist
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'groups_name_key' AND contype = 'u'
+      ) THEN
+        ALTER TABLE groups ADD CONSTRAINT groups_name_key UNIQUE (name);
+      END IF;
+    END
+    $$;
+  `);;
   // Group members
   await pool.query(`
     CREATE TABLE IF NOT EXISTS group_members (
       group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      is_admin BOOLEAN NOT NULL DEFAULT false,
+      joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (group_id, user_id)
     );
+  `);
+  
+  // Add any missing columns to group_members
+  await pool.query(`
+    ALTER TABLE group_members 
+    ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NULL DEFAULT now();
   `);
   // Messages
   await pool.query(`

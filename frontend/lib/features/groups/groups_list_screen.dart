@@ -95,7 +95,12 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
                 }
                 final g = filtered[index - 1];
                 final rawId = g['id'] ?? g['group_id'] ?? index;
-                final id = rawId is num ? rawId.toInt() : int.tryParse(rawId.toString()) ?? index;
+                // Handle different ID types from backend (could be String or int)
+                final id = rawId is int 
+                  ? rawId 
+                  : rawId is num 
+                    ? rawId.toInt() 
+                    : int.tryParse(rawId?.toString() ?? '') ?? index;
                 final name = g['name']?.toString() ?? 'Group #$id';
                 final type = g['type']?.toString();
                 final members = g['members'] ?? g['member_count'] ?? g['members_count'];

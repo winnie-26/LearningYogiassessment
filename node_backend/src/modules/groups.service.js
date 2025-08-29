@@ -5,14 +5,100 @@ async function list({ limit, userId }) {
 }
 
 async function create({ name, type, max_members, member_ids }, ownerId) {
-  if (!name || !type || !max_members) {
-    const err = new Error('invalid_payload'); err.status = 400; err.code = 'invalid_payload'; throw err;
+  console.log('[GroupsService] create - Raw input:', { 
+    name, 
+    type, 
+    max_members,
+    member_ids,
+    ownerId,
+    types: {
+      name: typeof name,
+      type: typeof type,
+      max_members: typeof max_members,
+      member_ids: Array.isArray(member_ids) ? 'array' : typeof member_ids,
+      ownerId: typeof ownerId
+    }
+  });
+  
+  // Validate required fields
+  if (!name || !type || max_members === undefined || max_members === null) {
+    const err = new Error('Missing required fields'); 
+    err.status = 400; 
+    err.code = 'invalid_payload'; 
+    throw err;
   }
-  let members = undefined;
+  
+  // Ensure ownerId is a number
+  const numericOwnerId = typeof ownerId === 'string' 
+    ? parseInt(ownerId, 10) 
+    : Number(ownerId);
+    
+  if (isNaN(numericOwnerId) || numericOwnerId <= 0) {
+    const err = new Error(`Invalid owner ID: ${ownerId}`);
+    err.status = 400;
+    throw err;
+  }
+  
+  // Process max_members
+  const numericMaxMembers = typeof max_members === 'string' 
+    ? parseInt(max_members, 10)
+    : Number(max_members);
+    
+  if (isNaN(numericMaxMembers) || numericMaxMembers <= 0) {
+    const err = new Error(`Invalid max_members: ${max_members}`);
+    err.status = 400;
+    throw err;
+  }
+  
+  // Process member IDs - ensure they are valid numbers and not the owner
+  let members = [];
   if (Array.isArray(member_ids)) {
-    members = member_ids.map(n => Number(n)).filter(n => Number.isFinite(n));
+    members = member_ids.reduce((acc, memberId) => {
+      if (memberId === null || memberId === undefined) return acc;
+      const num = typeof memberId === 'string' ? parseInt(memberId, 10) : Number(memberId);
+      if (isNaN(num) || num <= 0) return acc;
+      if (num === numericOwnerId) return acc; // Skip owner ID
+      return [...acc, num];
+    }, []);
+    
+    // Remove duplicates
+    members = [...new Set(members)];
   }
-  return repo.createGroup(name, type, Number(max_members), ownerId, members);
+  
+  const processed = { 
+    name: String(name || '').trim(),
+    type: String(type || 'open').toLowerCase(),
+    maxMembers: numericMaxMembers,
+    ownerId: numericOwnerId,
+    members
+  };
+  
+  // Validate group type
+  if (!['open', 'private'].includes(processed.type)) {
+    processed.type = 'open'; // Default to open if invalid type provided
+  }
+  
+  console.log('[GroupsService] create - Processed:', processed);
+  
+  try {
+    return await repo.createGroup(
+      processed.name,
+      processed.type,
+      processed.maxMembers,
+      processed.ownerId,
+      processed.members
+    );
+  } catch (error) {
+    // Handle unique constraint violation
+    if (error.code === '23505' && error.constraint === 'groups_name_key') {
+      const err = new Error('A group with this name already exists');
+      err.status = 400;
+      err.code = 'duplicate_group_name';
+      throw err;
+    }
+    // Re-throw other errors
+    throw error;
+  }
 }
 
 async function join(groupId, userId) {

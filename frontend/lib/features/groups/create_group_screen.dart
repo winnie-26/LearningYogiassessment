@@ -33,7 +33,12 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
       final repo = ref.read(groupsRepositoryProvider);
       final created = await repo.create(name, type, maxMembers, memberIds: _selected.toList());
       // Try to auto-join if API requires membership for listing
-      final id = (created['id'] ?? created['group_id']) as int?;
+      final dynamic rawId = created['id'] ?? created['group_id'];
+      final int? id = rawId is int 
+          ? rawId 
+          : rawId is num 
+              ? rawId.toInt() 
+              : int.tryParse(rawId?.toString() ?? '');
       if (id != null) {
         try { await repo.join(id); } catch (_) {/* ignore */}
       }
