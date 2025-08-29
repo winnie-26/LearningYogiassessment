@@ -21,7 +21,16 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
 
   Future<List<Map<String, dynamic>>> _loadUsers(String q) async {
     final repo = ref.read(usersRepositoryProvider);
-    return repo.list(q: q, limit: 100);
+    final response = await repo.list(q: q, limit: 100);
+    
+    // Extract and sort users alphabetically by name
+    final users = response.items.toList()..sort((a, b) {
+      final nameA = (a['name'] ?? a['email'] ?? '').toString().toLowerCase();
+      final nameB = (b['name'] ?? b['email'] ?? '').toString().toLowerCase();
+      return nameA.compareTo(nameB);
+    });
+    
+    return users;
   }
 
   Future<void> _submit() async {

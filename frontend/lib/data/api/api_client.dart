@@ -63,8 +63,13 @@ class ApiClient {
       );
 
   // Users
-  Future<Response> listUsers({String? q, int? limit}) => _dio.get('/api/v1/users', queryParameters: {
+  Future<Response> listUsers({
+    String? q, 
+    int? limit, 
+    int? offset
+  }) => _dio.get('/api/v1/users', queryParameters: {
         if (q != null && q.isNotEmpty) 'q': q,
         if (limit != null) 'limit': limit,
+        if (offset != null) 'offset': offset,
       });
 }
