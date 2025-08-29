@@ -85,6 +85,46 @@ async function canJoin(req, res, next) {
   }
 }
 
+// Remove a member (owner only)
+async function removeMember(req, res, next) {
+  try {
+    const groupId = req.params.id;
+    const targetUserId = req.params.userId;
+    const requesterId = req.user?.sub;
+
+    if (!requesterId) {
+      console.warn('[groups.controller.removeMember] 401 unauthenticated', { groupId, targetUserId });
+      return res.status(401).json({ code: 'unauthorized', message: 'Login required' });
+    }
+
+    const group = await svc.getGroup(groupId);
+    if (!group) {
+      console.warn('[groups.controller.removeMember] 404 group not found', { groupId });
+      return res.status(404).json({ code: 'not_found', message: 'Group not found' });
+    }
+    console.log('[groups.controller.removeMember] request', { groupId, targetUserId: String(targetUserId), requesterId: String(requesterId), owner_id: String(group.owner_id) });
+    if (String(group.owner_id) !== String(requesterId)) {
+      console.warn('[groups.controller.removeMember] 403 not owner', { requesterId, owner_id: group.owner_id });
+      return res.status(403).json({ code: 'forbidden', message: 'Only the owner can remove members' });
+    }
+    if (String(group.owner_id) === String(targetUserId)) {
+      console.warn('[groups.controller.removeMember] 400 attempt to remove owner', { targetUserId, owner_id: group.owner_id });
+      return res.status(400).json({ code: 'invalid_request', message: 'Owner cannot be removed' });
+    }
+
+    // Ensure target is a member
+    const { rows } = await svc.checkMembership(groupId, targetUserId);
+    if (!rows || rows.length === 0) {
+      console.warn('[groups.controller.removeMember] 404 target not member', { targetUserId });
+      return res.status(404).json({ code: 'not_member', message: 'User is not a member of this group' });
+    }
+
+    const out = await svc.removeMember(groupId, targetUserId);
+    console.log('[groups.controller.removeMember] success', { groupId: out.id, members: out.members_count });
+    return res.json({ ok: true, group_id: out.id, members: out.members_count });
+  } catch (e) { next(e); }
+}
+
 async function create(req, res, next) {
   try {
     const payload = req.body || {};
@@ -191,4 +231,5 @@ module.exports = {
   destroy, 
   canJoin,
   update,
+  removeMember,
 };

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/repositories/groups_repository.dart';
+import '../../data/api/api_client.dart';
 import '../../data/repositories/messages_repository.dart';
 
 final groupsListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
@@ -48,6 +49,7 @@ class GroupsListScreen extends ConsumerStatefulWidget {
 
 class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
   final _search = TextEditingController();
+  final Set<int> _sentRequests = <int>{};
 
   bool _isJoined(Map<String, dynamic> g) {
     final keys = ['is_member', 'joined', 'membership', 'am_member'];
@@ -235,15 +237,148 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
                                 ),
                               )
                             : null,
-                        onTap: () => Navigator.of(context).pushNamed(
-                          '/chat',
-                          arguments: {
-                            'id': id,
-                            'name': name,
-                            'isPrivate': isPrivate,
-                            'ownerId': g['owner_id'],
-                          },
-                        ),
+                        trailing: _sentRequests.contains(id)
+                            ? const Padding(
+                                padding: EdgeInsets.only(left: 8.0),
+                                child: Chip(label: Text('Requested')),
+                              )
+                            : null,
+                        onTap: () async {
+                          final repo = ref.read(groupsRepositoryProvider);
+                          final api = ref.read(apiClientProvider);
+                          // If already joined, go straight to chat
+                          if (_isJoined(g)) {
+                            if (!context.mounted) return;
+                            Navigator.of(context).pushNamed(
+                              '/chat',
+                              arguments: {
+                                'id': id,
+                                'name': name,
+                                'isPrivate': isPrivate,
+                                'ownerId': g['owner_id'],
+                              },
+                            );
+                            return;
+                          }
+
+                          // Prevent duplicate requests for private groups
+                          if (isPrivate && _sentRequests.contains(id)) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Join request already sent')),
+                            );
+                            return;
+                          }
+
+                          try {
+                            // Ask backend whether we can join directly
+                            final res = await api.canJoinGroup(id);
+                            final body = res.data;
+                            bool canJoin = false;
+                            bool needsInvite = isPrivate;
+                            bool isFull = false;
+                            if (body is Map) {
+                              final map = body.cast<String, dynamic>();
+                              canJoin = map['canJoin'] == true || map['allowed'] == true;
+                              needsInvite = map['requiresInvite'] == true || map['isPrivate'] == true || map['reason'] == 'invitation_required' || needsInvite;
+                              isFull = map['reason'] == 'group_full' || (map['message']?.toString().toLowerCase().contains('maximum') ?? false);
+                            }
+
+                            if (isFull) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('This group is full.')),
+                              );
+                              return;
+                            }
+
+                            if (canJoin && !needsInvite) {
+                              await repo.join(id);
+                              if (!context.mounted) return;
+                              Navigator.of(context).pushNamed(
+                                '/chat',
+                                arguments: {
+                                  'id': id,
+                                  'name': name,
+                                  'isPrivate': isPrivate,
+                                  'ownerId': g['owner_id'],
+                                },
+                              );
+                              return;
+                            }
+
+                            // Private or needs invite: prompt to send join request
+                            if (!context.mounted) return;
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Request to join?'),
+                                content: Text('"$name" is a private group. Send a join request to the owner?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                                  ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Send request')),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              await api.createJoinRequest(id);
+                              setState(() { _sentRequests.add(id); });
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Join request sent')),
+                              );
+                            }
+                          } catch (e) {
+                            // Fallback: if public, attempt to join; else show prompt
+                            if (!isPrivate) {
+                              try {
+                                await repo.join(id);
+                                if (!context.mounted) return;
+                                Navigator.of(context).pushNamed(
+                                  '/chat',
+                                  arguments: {
+                                    'id': id,
+                                    'name': name,
+                                    'isPrivate': isPrivate,
+                                    'ownerId': g['owner_id'],
+                                  },
+                                );
+                              } catch (e2) {
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Failed to join: $e2')),
+                                );
+                              }
+                            } else {
+                              if (!context.mounted) return;
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Request to join?'),
+                                  content: Text('Send a join request to "${name}"?'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+                                    ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Send request')),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                try {
+                                  final api = ref.read(apiClientProvider);
+                                  await api.createJoinRequest(id);
+                                  setState(() { _sentRequests.add(id); });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Join request sent')),
+                                  );
+                                } catch (e3) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Failed to send request: $e3')),
+                                  );
+                                }
+                              }
+                            }
+                          }
+                        },
                       ),
                     );
                   },

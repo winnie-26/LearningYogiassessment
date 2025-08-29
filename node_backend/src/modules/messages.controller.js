@@ -22,4 +22,18 @@ async function list(req, res, next) {
   } catch (e) { next(e); }
 }
 
-module.exports = { send, list };
+async function destroy(req, res, next) {
+  try {
+    if (!req.user || !req.user.sub) {
+      const err = new Error('Authentication required');
+      err.status = 401;
+      throw err;
+    }
+    const groupId = req.params.id;
+    const messageId = req.params.messageId;
+    await svc.remove(groupId, req.user.sub, messageId);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+}
+
+module.exports = { send, list, destroy };

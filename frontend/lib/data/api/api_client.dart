@@ -41,6 +41,7 @@ class ApiClient {
         'new_owner_id': newOwnerId,
       });
   Future<Response> deleteGroup(int id) => _dio.delete('/api/v1/groups/$id');
+  Future<Response> removeMember(int id, int userId) => _dio.delete('/api/v1/groups/$id/members/$userId');
   Future<Response> banishUser(int id, int userId, String reason) => _dio.post('/api/v1/groups/$id/banish', data: {
         'user_id': userId,
         'reason': reason,
@@ -76,6 +77,7 @@ class ApiClient {
 
   // Join requests
   Future<Response> listJoinRequests(int id) => _dio.get('/api/v1/groups/$id/join-requests');
+  Future<Response> createJoinRequest(int id) => _dio.post('/api/v1/groups/$id/join-requests');
   Future<Response> approveJoin(int id, int reqId) => _dio.post('/api/v1/groups/$id/join-requests/$reqId/approve');
   Future<Response> declineJoin(int id, int reqId) => _dio.post('/api/v1/groups/$id/join-requests/$reqId/decline');
 

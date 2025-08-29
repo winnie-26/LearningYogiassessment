@@ -225,4 +225,32 @@ async function list(client, groupId, { limit = 20, before = null } = {}) {
   }
 }
 
-module.exports = { add, list };
+async function remove(client, groupId, messageId) {
+  if (!isDbEnabled()) {
+    // In-memory store API may differ; implement a simple filter if available
+    if (typeof store.deleteMessage === 'function') {
+      return store.deleteMessage(groupId, messageId);
+    }
+    if (typeof store._messages === 'object') {
+      const key = String(groupId);
+      const arr = store._messages[key] || [];
+      const before = arr.length;
+      store._messages[key] = arr.filter(m => String(m.id) !== String(messageId));
+      return { ok: true, deleted: before - store._messages[key].length };
+    }
+    return { ok: true };
+  }
+  const useDbClient = !!client;
+  const query = async (q) => {
+    if (useDbClient) return client.query(q);
+    const pool = getPool();
+    return pool.query(q);
+  };
+  await query({
+    text: 'DELETE FROM messages WHERE id = $1 AND group_id = $2',
+    values: [Number(messageId), Number(groupId)],
+  });
+  return { ok: true };
+}
+
+module.exports = { add, list, remove };

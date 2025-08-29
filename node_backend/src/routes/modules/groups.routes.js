@@ -23,6 +23,9 @@ router.post('/:id/leave', authRequired, ctrl.leave);
 // POST /api/v1/groups/:id/transfer-owner
 router.post('/:id/transfer-owner', authRequired, ctrl.transferOwner);
 
+// DELETE /api/v1/groups/:id/members/:userId
+router.delete('/:id/members/:userId', authRequired, ctrl.removeMember);
+
 // PATCH /api/v1/groups/:id
 router.patch('/:id', authRequired, ctrl.update);
 

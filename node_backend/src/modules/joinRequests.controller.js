@@ -7,6 +7,16 @@ async function list(req, res, next) {
   } catch (e) { next(e); }
 }
 
+async function create(req, res, next) {
+  try {
+    const groupId = req.params.id;
+    const userId = req.user?.sub;
+    if (!userId) return res.status(401).json({ code: 'unauthorized', message: 'Login required' });
+    const jr = await svc.create(groupId, userId);
+    res.status(201).json(jr);
+  } catch (e) { next(e); }
+}
+
 async function approve(req, res, next) {
   try {
     const jr = await svc.approve(req.params.id, req.params.reqId);
@@ -21,4 +31,4 @@ async function decline(req, res, next) {
   } catch (e) { next(e); }
 }
 
-module.exports = { list, approve, decline };
+module.exports = { list, create, approve, decline };

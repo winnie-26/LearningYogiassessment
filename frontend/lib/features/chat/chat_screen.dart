@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/api/api_client.dart';
 
 import '../../data/repositories/messages_repository.dart';
 import '../../data/repositories/groups_repository.dart';
@@ -72,6 +73,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _text = TextEditingController();
   bool _sending = false;
   final _scrollController = ScrollController();
+  String? _resolvedOwnerId; // Fallback owner id resolved from repository
 
   @override
   void dispose() {
@@ -116,10 +118,118 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _showJoinRequests() async {
     if (!mounted) return;
-    // TODO: Implement join requests dialog
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Showing join requests...')),
-    );
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {};
+    final rawId = args['id'] ?? 0;
+    final groupId = rawId is num ? rawId.toInt() : int.tryParse(rawId.toString()) ?? 0;
+
+    final api = ref.read(apiClientProvider);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      final res = await api.listJoinRequests(groupId);
+      dynamic body = res.data;
+      List<dynamic> requests;
+      if (body is List) {
+        requests = body;
+      } else if (body is Map) {
+        final map = body as Map<String, dynamic>;
+        final candidates = ['data', 'items', 'requests'];
+        List<dynamic>? found;
+        for (final key in candidates) {
+          final val = map[key];
+          if (val is List) { found = val; break; }
+          if (val is Map) {
+            for (final innerKey in candidates) {
+              final inner = val[innerKey];
+              if (inner is List) { found = inner; break; }
+            }
+          }
+          if (found != null) break;
+        }
+        requests = found ?? <dynamic>[];
+      } else {
+        requests = <dynamic>[];
+      }
+
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (ctx) {
+          return StatefulBuilder(
+            builder: (ctx, setLocalState) {
+              return AlertDialog(
+                title: const Text('Join Requests'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: requests.isEmpty
+                      ? const Text('No pending requests')
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: requests.length,
+                          itemBuilder: (context, index) {
+                            final req = requests[index] as Map<String, dynamic>;
+                            final id = req['id'] ?? req['req_id'] ?? index;
+                            final userId = req['user_id'] ?? req['userId'] ?? 'Unknown';
+                            final status = (req['status'] ?? '').toString();
+                            return ListTile(
+                              title: Text('User #$userId'),
+                              subtitle: Text(status.isEmpty ? 'pending' : status),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Approve',
+                                    icon: const Icon(Icons.check, color: Colors.green),
+                                    onPressed: status == 'approved' ? null : () async {
+                                      try {
+                                        await api.approveJoin(groupId, (id as num).toInt());
+                                        messenger.showSnackBar(const SnackBar(content: Text('Approved request')));
+                                        setLocalState(() {
+                                          req['status'] = 'approved';
+                                        });
+                                      } catch (e) {
+                                        messenger.showSnackBar(SnackBar(content: Text('Failed to approve: $e')));
+                                      }
+                                    },
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Decline',
+                                    icon: const Icon(Icons.close, color: Colors.red),
+                                    onPressed: status == 'declined' ? null : () async {
+                                      try {
+                                        await api.declineJoin(groupId, (id as num).toInt());
+                                        messenger.showSnackBar(const SnackBar(content: Text('Declined request')));
+                                        setLocalState(() {
+                                          req['status'] = 'declined';
+                                        });
+                                      } catch (e) {
+                                        messenger.showSnackBar(SnackBar(content: Text('Failed to decline: $e')));
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Close'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Failed to load join requests: $e')),
+      );
+    }
   }
 
   @override
@@ -134,7 +244,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final currentUserIdAsync = ref.watch(currentUserIdProvider);
     return currentUserIdAsync.when(
       data: (currentUserId) {
-        final normalizedOwnerId = ownerId?.toString().trim();
+        // Determine effective owner id: from args or previously resolved fallback
+        String? effectiveOwnerId = (ownerId ?? _resolvedOwnerId)?.toString();
+
+        // If ownerId missing, try to resolve it once from groups list
+        if (effectiveOwnerId == null || effectiveOwnerId.isEmpty) {
+          // fire-and-forget resolve; safe because setState guarded by mounted
+          Future.microtask(() async {
+            try {
+              final repo = ref.read(groupsRepositoryProvider);
+              final groups = await repo.list(limit: 100);
+              final found = groups.cast<Map>().firstWhere(
+                (g) => ((g['id'] ?? g['group_id'])?.toString() == groupId.toString()),
+                orElse: () => const {},
+              );
+              final owner = (found['owner_id'] ?? found['ownerId'])?.toString();
+              if (owner != null && owner.isNotEmpty && mounted) {
+                setState(() {
+                  _resolvedOwnerId = owner;
+                });
+              }
+            } catch (_) {
+              // ignore failures; UI will behave as non-owner until resolved
+            }
+          });
+        }
+
+        final normalizedOwnerId = effectiveOwnerId?.trim();
         final normalizedCurrentUserId = currentUserId?.toString().trim();
         debugPrint('Owner ID: $normalizedOwnerId, Current User ID: $normalizedCurrentUserId');
         final isOwner = normalizedOwnerId != null && normalizedCurrentUserId != null && normalizedOwnerId == normalizedCurrentUserId;
@@ -160,15 +296,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             actions: [
               if (isOwner) ...[
                 IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: _showJoinRequests,
+                  tooltip: 'Manage Join Requests',
+                ),
+                IconButton(
                   icon: Icon(isPrivate ? Icons.lock : Icons.lock_open),
                   onPressed: _toggleGroupPrivacy,
                   tooltip: isPrivate ? 'Make Public' : 'Make Private',
                 ),
-                IconButton(
-                  icon: const Icon(Icons.group_add),
-                  onPressed: _showJoinRequests,
-                  tooltip: 'Manage Join Requests',
-                ),
+                
               ],
             ],
           ),
@@ -188,50 +325,148 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
                         final message = messages[index];
-                        final senderName = message['sender']?['name']?.toString() ?? 'Unknown';
+                        final senderMap = message['sender'];
+                        final senderName = senderMap?['name']?.toString() ?? 'Unknown';
+                        final currentSenderIdStr = (() {
+                          if (senderMap is Map) {
+                            final raw = senderMap['id'] ?? senderMap['user_id'] ?? senderMap['uid'];
+                            if (raw != null) return raw.toString();
+                          }
+                          return null;
+                        })();
+                        final prevSenderIdStr = (() {
+                          if (index > 0) {
+                            final prev = messages[index - 1];
+                            final prevSender = prev['sender'];
+                            if (prevSender is Map) {
+                              final raw = prevSender['id'] ?? prevSender['user_id'] ?? prevSender['uid'];
+                              if (raw != null) return raw.toString();
+                            }
+                          }
+                          return null;
+                        })();
+                        final showSenderName = index == 0 || (currentSenderIdStr ?? '') != (prevSenderIdStr ?? '');
                         final messageText = message['text']?.toString() ?? '';
-                        final messageTime = message['created_at'] != null 
-                            ? DateTime.parse(message['created_at']).toString().substring(0, 19)
-                            : '';
+                        final messageTime = (() {
+                          final created = message['created_at'];
+                          if (created == null) return '';
+                          try {
+                            final dt = DateTime.parse(created.toString()).toLocal();
+                            final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+                            final m = dt.minute.toString().padLeft(2, '0');
+                            final ampm = dt.hour >= 12 ? 'pm' : 'am';
+                            return '$h:$m $ampm';
+                          } catch (_) {
+                            return created.toString();
+                          }
+                        })();
                             
                         return Card(
                           margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
                           child: ListTile(
-                            title: Text(messageText),
+                            title: showSenderName
+                                ? Text(
+                                    senderName,
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                                  )
+                                : null,
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'By: $senderName',
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                  messageText,
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w300),
                                 ),
                                 if (messageTime.isNotEmpty)
-                                  Text(
-                                    messageTime,
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      fontStyle: FontStyle.italic,
-                                      color: Colors.grey[600],
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Text(
+                                      messageTime,
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            fontStyle: FontStyle.italic,
+                                            color: Colors.grey[700],
+                                          ),
                                     ),
                                   ),
                               ],
                             ),
                             trailing: isOwner
-                                ? IconButton(
-                                    icon: const Icon(Icons.delete, size: 20, color: Colors.red),
-                                    onPressed: () async {
-                                      try {
-                                        final repo = ref.read(messagesRepositoryProvider);
-                                        await repo.deleteMessage(groupId, message['id']);
-                                        messagesNotifier.refresh();
-                                      } catch (e) {
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(content: Text('Failed to delete message: $e')),
-                                          );
+                                ? PopupMenuButton<String>(
+                                    onSelected: (value) async {
+                                      if (value == 'delete') {
+                                        try {
+                                          final repo = ref.read(messagesRepositoryProvider);
+                                          await repo.deleteMessage(groupId, message['id']);
+                                          messagesNotifier.refresh();
+                                        } catch (e) {
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Failed to delete message: $e')),
+                                            );
+                                          }
+                                        }
+                                      } else if (value == 'remove_user') {
+                                        try {
+                                          // Extract sender user id safely
+                                          final dynamic sender = message['sender'];
+                                          int? senderId;
+                                          if (sender is Map) {
+                                            final raw = sender['id'] ?? sender['user_id'] ?? sender['uid'];
+                                            if (raw is num) senderId = raw.toInt();
+                                            if (senderId == null && raw is String) {
+                                              final parsed = int.tryParse(raw);
+                                              if (parsed != null) senderId = parsed;
+                                            }
+                                          }
+                                          if (senderId == null) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Cannot determine user to remove')),
+                                            );
+                                            return;
+                                          }
+                                          final groupsRepo = ref.read(groupsRepositoryProvider);
+                                          await groupsRepo.removeMember(groupId, senderId);
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Removed user #$senderId from group')),
+                                            );
+                                          }
+                                          messagesNotifier.refresh();
+                                        } catch (e) {
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Failed to remove user: $e')),
+                                            );
+                                          }
                                         }
                                       }
                                     },
-                                    tooltip: 'Delete message',
+                                    itemBuilder: (ctx) {
+                                      // compute sender id to decide if remove is allowed
+                                      final dynamic sender = message['sender'];
+                                      String? senderIdStr;
+                                      if (sender is Map) {
+                                        final raw = sender['id'] ?? sender['user_id'] ?? sender['uid'];
+                                        if (raw != null) senderIdStr = raw.toString();
+                                      }
+                                      final ownerIdStr = (normalizedOwnerId ?? '').trim();
+                                      final isSenderOwner = senderIdStr != null && senderIdStr.trim() == ownerIdStr;
+                                      final items = <PopupMenuEntry<String>>[
+                                        const PopupMenuItem(
+                                          value: 'delete',
+                                          child: Text('Delete message'),
+                                        ),
+                                      ];
+                                      if (!isSenderOwner) {
+                                        items.add(
+                                          const PopupMenuItem(
+                                            value: 'remove_user',
+                                            child: Text('Remove user from group'),
+                                          ),
+                                        );
+                                      }
+                                      return items;
+                                    },
                                   )
                                 : null,
                           ),

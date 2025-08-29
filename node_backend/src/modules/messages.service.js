@@ -58,4 +58,36 @@ async function list(groupId, { limit } = {}) {
   });
 }
 
-module.exports = { send, list };
+async function remove(groupId, requesterId, messageId) {
+  const gid = Number(groupId);
+  const mid = Number(messageId);
+  if (!Number.isFinite(gid) || !Number.isFinite(mid)) {
+    const err = new Error('invalid_payload');
+    err.status = 400;
+    err.code = 'invalid_payload';
+    throw err;
+  }
+
+  // Verify requester is the group owner
+  const group = await withTx(async (client) => {
+    return await groupsRepo.getGroupWithMembers(client, gid);
+  });
+  if (!group) {
+    const err = new Error('Group not found');
+    err.status = 404;
+    throw err;
+  }
+  if (String(group.owner_id) !== String(requesterId)) {
+    const err = new Error('Only the owner can delete messages');
+    err.status = 403;
+    err.code = 'forbidden';
+    throw err;
+  }
+
+  return withTx(async (client) => {
+    await repo.remove(client, gid, mid);
+    return { ok: true };
+  });
+}
+
+module.exports = { send, list, remove };

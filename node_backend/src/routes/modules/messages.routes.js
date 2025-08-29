@@ -10,4 +10,7 @@ router.post('/:id/messages', authRequired, ctrl.send);
 // GET /api/v1/groups/:id/messages
 router.get('/:id/messages', authRequired, ctrl.list);
 
+// DELETE /api/v1/groups/:id/messages/:messageId
+router.delete('/:id/messages/:messageId', authRequired, ctrl.destroy);
+
 module.exports = router;

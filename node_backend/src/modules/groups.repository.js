@@ -347,6 +347,18 @@ async function leaveGroup(groupId, userId) {
   return { id: Number(groupId), members_count: rows[0].c };
 }
 
+// Remove a member by owner/admin
+async function removeMember(groupId, userId) {
+  if (!isDbEnabled()) {
+    const g = store.leaveGroup(groupId, userId);
+    return { id: g.id, members_count: g.members.size };
+  }
+  const pool = getPool();
+  await pool.query('DELETE FROM group_members WHERE group_id = $1 AND user_id = $2', [groupId, userId]);
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS c FROM group_members WHERE group_id = $1', [groupId]);
+  return { id: Number(groupId), members_count: rows[0].c };
+}
+
 async function transferOwner(groupId, newOwnerId) {
   if (!isDbEnabled()) {
     return store.transferOwner(groupId, newOwnerId);
@@ -371,6 +383,7 @@ module.exports = {
   listGroups,
   joinGroup,
   leaveGroup,
+  removeMember,
   transferOwner,
   deleteGroup,
   getGroupWithMembers,

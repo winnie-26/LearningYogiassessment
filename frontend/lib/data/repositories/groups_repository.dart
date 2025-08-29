@@ -58,6 +58,7 @@ class GroupsRepository {
   Future<void> transferOwner(int id, int newOwnerId) => _api.transferOwner(id, newOwnerId).then((_) {});
   Future<void> delete(int id) => _api.deleteGroup(id).then((_) {});
   Future<void> banish(int id, int userId, String reason) => _api.banishUser(id, userId, reason).then((_) {});
+  Future<void> removeMember(int id, int userId) => _api.removeMember(id, userId).then((_) {});
 
   Future<void> update(int id, {String? name, String? type, int? maxMembers}) async {
     await _api.updateGroup(id, name: name, type: type, maxMembers: maxMembers);

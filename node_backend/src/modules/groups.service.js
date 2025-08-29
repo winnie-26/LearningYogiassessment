@@ -146,4 +146,24 @@ async function update(groupId, { name, type, max_members } = {}) {
   return repo.updateGroup(Number(groupId), { name, type, max_members });
 }
 
-module.exports = { list, create, join, leave, transferOwner, destroy, update };
+async function removeMember(groupId, userId) {
+  return repo.removeMember(Number(groupId), Number(userId));
+}
+
+async function getGroup(groupId) {
+  try {
+    return await repo.getGroupWithMembers(Number(groupId));
+  } catch (e) {
+    if (e && e.message === 'Group not found') return null;
+    throw e;
+  }
+}
+
+async function checkMembership(groupId, userId) {
+  const g = await getGroup(groupId);
+  if (!g) return { rows: [] };
+  const isMember = g.members && g.members.some(m => String(m.user_id) === String(userId));
+  return { rows: isMember ? [{}] : [] };
+}
+
+module.exports = { list, create, join, leave, transferOwner, destroy, update, removeMember, getGroup, checkMembership };
