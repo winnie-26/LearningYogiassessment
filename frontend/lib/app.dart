@@ -67,6 +67,7 @@ class _AppState extends State<App> {
         '/register': (_) => const RegisterScreen(),
         '/groups': (_) => const GroupsListScreen(),
         '/group': (_) => const GroupDetailScreen(),
+        '/group-detail': (_) => const GroupDetailScreen(),
         '/create-group': (_) => const CreateGroupScreen(),
         '/join-requests': (_) => const JoinRequestsScreen(),
         '/chat': (_) => const ChatScreen(),

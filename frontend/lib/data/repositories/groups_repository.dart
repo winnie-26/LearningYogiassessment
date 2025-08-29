@@ -48,9 +48,18 @@ class GroupsRepository {
     return (res.data as Map<String, dynamic>);
   }
 
+  Future<Map<String, dynamic>> joinGroup(int groupId) async {
+    final res = await _api.joinGroup(groupId);
+    return (res.data as Map<String, dynamic>);
+  }
+
   Future<void> join(int id) => _api.joinGroup(id).then((_) {});
   Future<void> leave(int id) => _api.leaveGroup(id).then((_) {});
   Future<void> transferOwner(int id, int newOwnerId) => _api.transferOwner(id, newOwnerId).then((_) {});
   Future<void> delete(int id) => _api.deleteGroup(id).then((_) {});
   Future<void> banish(int id, int userId, String reason) => _api.banishUser(id, userId, reason).then((_) {});
+
+  Future<void> update(int id, {String? name, String? type, int? maxMembers}) async {
+    await _api.updateGroup(id, name: name, type: type, maxMembers: maxMembers);
+  }
 }

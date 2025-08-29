@@ -3,7 +3,21 @@ const { isDbEnabled, getPool } = require('../data/db');
 
 async function listUsers({ q, limit, offset } = {}) {
   if (!isDbEnabled()) {
-    return store.listUsers({ q, limit });
+    // In-memory store: apply filtering via store, then paginate here with offset
+    const all = store.listUsers({ q });
+    const off = typeof offset === 'number' && offset > 0 ? offset : 0;
+    let items;
+    if (typeof limit === 'number') {
+      items = all.slice(off, off + limit);
+    } else {
+      items = all.slice(off);
+    }
+    return {
+      items,
+      total: all.length,
+      limit: typeof limit === 'number' ? limit : (all.length - off),
+      offset: off,
+    };
   }
   const pool = getPool();
   const params = [];

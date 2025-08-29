@@ -102,13 +102,26 @@ async function create({ name, type, max_members, member_ids }, ownerId) {
 }
 
 async function join(groupId, userId) {
-  const out = await repo.joinGroup(Number(groupId), userId);
-  // Normalize shapes from store (Set) vs DB (count)
-  if (out && typeof out.members_count === 'number') return out;
-  if (out && out.members && typeof out.members.size === 'number') {
-    return { id: out.id, members_count: out.members.size };
+  try {
+    const out = await repo.joinGroup(Number(groupId), userId);
+    // Normalize shapes from store (Set) vs DB (count)
+    if (out && typeof out.members_count === 'number') return out;
+    if (out && out.members && typeof out.members.size === 'number') {
+      return { 
+        id: out.id, 
+        members_count: out.members.size,
+        is_new_member: true
+      };
+    }
+    return out;
+  } catch (error) {
+    // Enhance error message for private group restrictions
+    if (error.code === 'invitation_required') {
+      error.message = 'This is a private group. You need an invitation to join.';
+      error.status = 403;
+    }
+    throw error;
   }
-  return out;
 }
 
 async function leave(groupId, userId) {
@@ -129,4 +142,8 @@ async function destroy(groupId) {
   return { ok: true };
 }
 
-module.exports = { list, create, join, leave, transferOwner, destroy };
+async function update(groupId, { name, type, max_members } = {}) {
+  return repo.updateGroup(Number(groupId), { name, type, max_members });
+}
+
+module.exports = { list, create, join, leave, transferOwner, destroy, update };

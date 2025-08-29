@@ -34,6 +34,7 @@ class ApiClient {
         'max_members': maxMembers,
         if (memberIds != null && memberIds.isNotEmpty) 'member_ids': memberIds,
       });
+  Future<Response> canJoinGroup(int id) => _dio.get('/api/v1/groups/$id/can-join');
   Future<Response> joinGroup(int id) => _dio.post('/api/v1/groups/$id/join');
   Future<Response> leaveGroup(int id) => _dio.post('/api/v1/groups/$id/leave');
   Future<Response> transferOwner(int id, int newOwnerId) => _dio.post('/api/v1/groups/$id/transfer-owner', data: {
@@ -44,6 +45,34 @@ class ApiClient {
         'user_id': userId,
         'reason': reason,
       });
+  Future<Response> updateGroup(int id, {String? name, String? type, int? maxMembers}) => _dio.patch(
+        '/api/v1/groups/$id',
+        data: {
+          if (name != null) 'name': name,
+          if (type != null) 'type': type,
+          if (maxMembers != null) 'max_members': maxMembers,
+        },
+      );
+
+  // Group Invitations
+  Future<Response> listGroupInvites(int groupId, {String? status}) => _dio.get(
+    '/api/v1/groups/$groupId/invites',
+    queryParameters: status != null ? {'status': status} : null,
+  );
+  
+  Future<Response> createGroupInvite(int groupId, int userId) => _dio.post(
+    '/api/v1/groups/$groupId/invites',
+    data: {'user_id': userId},
+  );
+  
+  Future<Response> respondToInvite(int groupId, int inviteId, String action) => _dio.post(
+    '/api/v1/groups/$groupId/invites/$inviteId/respond',
+    data: {'action': action},
+  );
+  
+  Future<Response> revokeInvite(int groupId, int inviteId) => _dio.delete(
+    '/api/v1/groups/$groupId/invites/$inviteId',
+  );
 
   // Join requests
   Future<Response> listJoinRequests(int id) => _dio.get('/api/v1/groups/$id/join-requests');
@@ -60,6 +89,9 @@ class ApiClient {
           if (limit != null) 'limit': limit,
           if (before != null) 'before': before,
         },
+      );
+  Future<Response> deleteMessage(int groupId, dynamic messageId) => _dio.delete(
+        '/api/v1/groups/$groupId/messages/$messageId',
       );
 
   // Users

@@ -169,7 +169,16 @@ function isDbEnabled() { return !!pool; }
 function getPool() { return pool; }
 
 async function withTx(fn) {
-  if (!pool) return fn(null);
+  if (!pool) {
+    // Create a mock client for when there's no database
+    const mockClient = {
+      query: async () => { 
+        throw new Error('No database connection available'); 
+      }
+    };
+    return fn(mockClient);
+  }
+  
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

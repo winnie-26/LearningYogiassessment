@@ -12,8 +12,7 @@ class CreateGroupScreen extends ConsumerStatefulWidget {
 
 class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
   final _name = TextEditingController();
-  bool _private = false; // false => open, true => private
-  final _maxMembers = TextEditingController(text: '50');
+  String _groupType = 'public'; // 'public' or 'private'
   bool _loading = false;
   String? _error;
   final _search = TextEditingController();
@@ -37,8 +36,8 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
     setState(() { _loading = true; _error = null; });
     try {
       final name = _name.text.trim();
-      final type = _private ? 'private' : 'open';
-      final maxMembers = int.tryParse(_maxMembers.text.trim()) ?? 50;
+      final type = _groupType; // 'public' or 'private'
+      const maxMembers = 50; // default max users
       final repo = ref.read(groupsRepositoryProvider);
       final created = await repo.create(name, type, maxMembers, memberIds: _selected.toList());
       // Try to auto-join if API requires membership for listing
@@ -62,104 +61,301 @@ class _CreateGroupScreenState extends ConsumerState<CreateGroupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Group')),
+      appBar: AppBar(
+        title: const Text('Create Group'),
+        elevation: 0,
+        backgroundColor: theme.scaffoldBackgroundColor,
+        foregroundColor: theme.textTheme.titleLarge?.color,
+        centerTitle: false,
+      ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Settings Section
-              TextField(
-                controller: _name,
-                decoration: const InputDecoration(labelText: 'Group Name', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Expanded(child: Text('Private (closed group)')),
-                  Switch.adaptive(value: _private, onChanged: (v) => setState(() => _private = v)),
-                ],
-              ),
-              const Divider(height: 24),
+              // Group Info Card
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Settings', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    // Group Name
+                    TextField(
+                      controller: _name,
+                      style: theme.textTheme.titleMedium,
+                      decoration: InputDecoration(
+                        hintText: 'Group Name',
+                        hintStyle: theme.textTheme.bodyMedium,
+                        filled: true,
+                        fillColor: theme.cardColor,
+                        border: const OutlineInputBorder(
+                          borderRadius: BorderRadius.zero,
+                          borderSide: BorderSide(color: Colors.black, width: 1),
+                        ),
+                        enabledBorder: const OutlineInputBorder(
+                          borderRadius: BorderRadius.zero,
+                          borderSide: BorderSide(color: Colors.black, width: 1),
+                        ),
+                        focusedBorder: const OutlineInputBorder(
+                          borderRadius: BorderRadius.zero,
+                          borderSide: BorderSide(color: Colors.black, width: 1.5),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Group Type Selection
+                    
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Private (closed group)',
+                          style: theme.textTheme.bodyLarge,
+                        ),
+                        Row(
+                          children: [
+                            Text('No', style: theme.textTheme.bodyMedium),
+                            Switch(
+                              value: _groupType == 'private',
+                              onChanged: (v) {
+                                setState(() {
+                                  _groupType = v ? 'private' : 'public';
+                                });
+                              },
+                            ),
+                            Text('Yes', style: theme.textTheme.bodyMedium),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _groupType == 'private' 
+                          ? 'Private groups require invitations to join.'
+                          : 'Anyone can join public groups.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ), // End of Group Info Card
+
               // Add Members Section
-              const Text('Add Members', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _search,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: 'Search users',
-                  prefixIcon: const Icon(Icons.search),
-                  border: const OutlineInputBorder(),
-                  isDense: true,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Add Members', style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    )),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _search,
+                      onChanged: (_) => setState(() {}),
+                      style: theme.textTheme.bodyLarge,
+                      decoration: InputDecoration(
+                        hintText: 'Search users',
+                        hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.hintColor,
+                        ),
+                        prefixIcon: Icon(Icons.search, color: theme.iconTheme.color?.withOpacity(0.7)),
+                        filled: true,
+                        fillColor: theme.cardColor,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        isDense: true,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 8),
-              Expanded(
+              SizedBox(
+                height: 300, // or another appropriate height
                 child: FutureBuilder<List<Map<String, dynamic>>>(
                   future: _loadUsers(_search.text.trim()),
                   builder: (context, snap) {
                     if (snap.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    final users = snap.data ?? const <Map<String, dynamic>>[];
-                    if (users.isEmpty) {
-                      return const Center(child: Text('No users found'));
-                    }
-                    return ListView.separated(
-                      itemCount: users.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final u = users[index];
-                        final rawId = u['id'];
-                        final id = rawId is num ? rawId.toInt() : int.tryParse(rawId?.toString() ?? '') ?? -1;
-                        final email = (u['email'] ?? '').toString();
-                        final selected = _selected.contains(id);
-                        return ListTile(
-                          title: Text(email),
-                          trailing: Checkbox(
-                            value: selected,
-                            onChanged: (v) => setState(() {
-                              if (v == true) {
-                                _selected.add(id);
-                              } else {
-                                _selected.remove(id);
-                              }
-                            }),
+                    if (snap.hasError) {
+                      return Center(
+                        child: Text(
+                          'Error loading users',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.error,
                           ),
-                          onTap: () => setState(() {
-                            if (selected) {
-                              _selected.remove(id);
-                            } else {
-                              _selected.add(id);
-                            }
-                          }),
+                        ),
+                      );
+                    }
+                    final users = snap.data ?? [];
+                    if (users.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'No users found',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.hintColor,
+                          ),
+                        ),
+                      );
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: users.length,
+                      itemBuilder: (ctx, i) {
+                        final user = users[i];
+                        final String displayName = ((user['name'] ?? user['email']) ?? '').toString();
+                        final String letter = displayName.isNotEmpty
+                            ? displayName[0].toUpperCase()
+                            : '#';
+                        String? prevLetter;
+                        if (i > 0) {
+                          final prev = users[i - 1];
+                          final prevName = ((prev['name'] ?? prev['email']) ?? '').toString();
+                          prevLetter = prevName.isNotEmpty ? prevName[0].toUpperCase() : '#';
+                        }
+                        final bool isHeader = i == 0 || letter != prevLetter;
+                        final dynamic rawId = user['id'];
+                        final int? userId = rawId is int
+                            ? rawId
+                            : rawId is num
+                                ? rawId.toInt()
+                                : int.tryParse(rawId?.toString() ?? '');
+                        final selected = userId != null && _selected.contains(userId);
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (isHeader)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                                child: Text(
+                                  letter,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                              child: InkWell(
+                                onTap: () => setState(() {
+                                  if (userId == null) return;
+                                  if (selected) {
+                                    _selected.remove(userId);
+                                  } else {
+                                    _selected.add(userId);
+                                  }
+                                }),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            (user['name'] ?? user['email'] ?? '').toString(),
+                                            style: theme.textTheme.bodyLarge?.copyWith(
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: Icon(
+                                            selected
+                                                ? Icons.radio_button_checked
+                                                : Icons.radio_button_unchecked,
+                                            color: Colors.black,
+                                            size: 26,
+                                          ),
+                                          onPressed: () => setState(() {
+                                            if (userId == null) return;
+                                            if (selected) {
+                                              _selected.remove(userId);
+                                            } else {
+                                              _selected.add(userId);
+                                            }
+                                          }),
+                                        ),
+                                      ],
+                                    ),
+                                    
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const Divider(color: Colors.black, thickness: 1, height: 1, indent: 12, endIndent: 12),
+                          ],
                         );
                       },
                     );
                   },
                 ),
               ),
-              const SizedBox(height: 8),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _loading ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primary,
+                      foregroundColor: theme.colorScheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: _loading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            'Create Group',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onPrimary,
+                            ),
+                          ),
+                  ),
                 ),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Create'),
+              ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+                child: Text(
+                  _error!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
               ),
             ],
           ),
+        ),
         ),
       ),
     );

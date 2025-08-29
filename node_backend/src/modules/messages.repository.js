@@ -1,83 +1,228 @@
 const store = require('../data/store');
 const { isDbEnabled, getPool } = require('../data/db');
 
-async function add(groupId, userId, text) {
+async function add(client, groupId, userId, text) {
+  console.log('add called with:', { groupId, userId, text });
+  
   if (!isDbEnabled()) {
+    console.log('Using in-memory store');
     return store.addMessage(groupId, userId, text);
   }
-  const pool = getPool();
+  
+  const useDbClient = client !== undefined;
+  console.log(`Using ${useDbClient ? 'provided client' : 'new connection pool'}`);
+  
+  const queryFn = async (queryObj) => {
+    console.log('Executing query:', {
+      text: queryObj.text,
+      values: queryObj.values,
+      useDbClient
+    });
+    
+    try {
+      let result;
+      if (useDbClient) {
+        console.log('Using provided client');
+        result = await client.query(queryObj);
+      } else {
+        console.log('Creating new connection pool');
+        const pool = getPool();
+        if (!pool) {
+          throw new Error('Database pool is not available');
+        }
+        result = await pool.query(queryObj);
+      }
+      console.log('Query successful, rows returned:', result.rows.length);
+      return result;
+    } catch (error) {
+      console.error('Query execution failed:', {
+        error: error.message,
+        code: error.code,
+        detail: error.detail,
+        query: queryObj.text,
+        values: queryObj.values
+      });
+      throw error;
+    }
+  };
   
   try {
-    // Generate a random IV for the message
-    const iv = Buffer.from('initial-iv').toString('base64');
+    // For now, we'll use the text as ciphertext and a fixed IV
+    // In production, you should use proper encryption
+    const iv = 'fixed-iv-for-now';
+    const ciphertext = text || ''; // Ensure ciphertext is not null
     
-    // Insert the message with the text as ciphertext
-    const { rows } = await pool.query(
-      `INSERT INTO messages (
+    // Build the query with all required fields
+    const queryText = `
+      INSERT INTO messages (
         group_id, 
-        sender_id, 
-        ciphertext, 
+        user_id,
+        text,
+        ciphertext,
         iv,
         created_at
       ) VALUES (
         $1::bigint, 
-        $2::bigint, 
-        $3, 
+        $2::bigint,
+        $3,
         $4,
+        $5,
         NOW()
-      ) RETURNING id, group_id, sender_id AS user_id, created_at`,
-      [groupId, userId, text, iv]
-    );
+      ) RETURNING id, group_id, user_id, created_at, text`;
+      
+    const queryValues = [
+      groupId, 
+      userId, 
+      text,    // Storing plain text for now
+      ciphertext,
+      iv
+    ];
+    
+    console.log('Executing query with values:', { queryText, queryValues });
+    
+    const { rows } = await queryFn({ 
+      text: queryText,
+      values: queryValues 
+    });
+    
+    console.log('Message added successfully:', rows[0]);
     
     // Return the message with the text field for backward compatibility
     return { 
       id: rows[0].id,
       group_id: rows[0].group_id,
       user_id: rows[0].user_id,
-      text: text, // Include the original text in the response
+      text: text,
       created_at: rows[0].created_at
     };
-
   } catch (err) {
-    console.error('Error adding message:', err);
+    console.error('Error in add function:', {
+      error: err.message,
+      stack: err.stack,
+      groupId,
+      userId,
+      textLength: text?.length
+    });
     throw err;
   }
 }
 
-async function list(groupId, { limit } = {}) {
+async function list(client, groupId, { limit = 20, before = null } = {}) {
+  console.log('list called with:', { 
+    groupId, 
+    limit,
+    clientExists: !!client,
+    isDbEnabled: isDbEnabled()
+  });
+  
   if (!isDbEnabled()) {
+    console.log('Using in-memory store');
     return store.listMessages(groupId, { limit });
   }
-  const pool = getPool();
-  const params = [groupId];
   
-  let sql = `
+  const useDbClient = client !== undefined;
+  console.log(`Using ${useDbClient ? 'provided client' : 'new connection pool'}`);
+  
+  const queryFn = async (queryObj) => {
+    console.log('Executing query:', {
+      text: queryObj.text,
+      values: queryObj.values,
+      useDbClient
+    });
+    
+    try {
+      let result;
+      if (useDbClient) {
+        console.log('Using provided client');
+        result = await client.query(queryObj);
+      } else {
+        console.log('Creating new connection pool');
+        const pool = getPool();
+        if (!pool) {
+          throw new Error('Database pool is not available');
+        }
+        result = await pool.query(queryObj);
+      }
+      console.log('Query successful, rows returned:', result.rows.length);
+      return result;
+    } catch (error) {
+      console.error('Query execution failed:', {
+        error: error.message,
+        code: error.code,
+        detail: error.detail,
+        query: queryObj.text,
+        values: queryObj.values
+      });
+      throw error;
+    }
+  };
+  
+  // Build the query dynamically based on whether limit is provided
+  let queryText = `
     SELECT 
-      id, 
-      group_id, 
-      sender_id AS user_id, 
-      ciphertext AS text, 
-      created_at 
-    FROM messages 
-    WHERE group_id = $1::bigint 
-    ORDER BY created_at DESC
-  `;
+      m.id,
+      m.group_id,
+      CASE 
+        WHEN m.user_id IS NOT NULL THEN m.user_id 
+        ELSE m.sender_id 
+      END as user_id,
+      CASE 
+        WHEN m.text IS NOT NULL THEN m.text
+        ELSE m.ciphertext 
+      END as text,
+      m.created_at,
+      u.email AS sender_email,
+      SPLIT_PART(u.email, '@', 1) AS sender_name
+    FROM messages m
+    JOIN users u ON u.id = CASE 
+      WHEN m.user_id IS NOT NULL THEN m.user_id 
+      ELSE m.sender_id 
+    END
+    WHERE m.group_id = $1`;
   
-  if (typeof limit === 'number') {
-    params.push(limit);
-    sql += ` LIMIT $${params.length}`;
+  const queryValues = [groupId];
+  
+  // Add condition for pagination (before timestamp)
+  if (before) {
+    queryText += ' AND m.created_at < $2';
+    queryValues.push(new Date(before).toISOString());
   }
   
-  const { rows } = await pool.query(sql, params);
+  // Always order by created_at DESC for pagination
+  queryText += ' ORDER BY m.created_at DESC';
   
-  // Ensure all required fields are present and in the correct format
-  return rows.map(row => ({
-    id: row.id,
-    group_id: row.group_id,
-    user_id: row.user_id,
-    text: row.text, // This is the ciphertext from the database
-    created_at: row.created_at
-  }));
+  // Add LIMIT
+  queryText += ` LIMIT $${queryValues.length + 1}`;
+  queryValues.push(limit);
+  
+  console.log('Final query:', queryText);
+  console.log('Query values:', queryValues);
+  
+  try {
+    const { rows } = await queryFn({ text: queryText, values: queryValues });
+    console.log('Rows returned:', rows.length);
+    
+    // Return the rows in ascending order (oldest first) for display
+    const sortedRows = [...rows].sort((a, b) => 
+      new Date(a.created_at) - new Date(b.created_at)
+    );
+    
+    return sortedRows.map(row => ({
+      id: row.id,
+      group_id: row.group_id,
+      user_id: row.user_id,
+      text: row.text,
+      created_at: row.created_at,
+      sender: {
+        id: row.user_id,
+        name: row.sender_name || row.sender_email?.split('@')[0] || 'Unknown',
+        email: row.sender_email || 'no-email'
+      }
+    }));
+  } catch (error) {
+    console.error('Error in list function:', error);
+    throw error;
+  }
 }
 
 module.exports = { add, list };

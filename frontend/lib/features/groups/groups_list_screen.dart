@@ -1,12 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/repositories/groups_repository.dart';
+import '../../data/repositories/messages_repository.dart';
 
 final groupsListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final repo = ref.read(groupsRepositoryProvider);
   final items = await repo.list(limit: 50);
   // Ensure a list of maps for UI safety (skip non-map items)
   return items.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+});
+
+// Fetch the most recent message for a group (limit 1)
+final lastMessageProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?, int>((ref, groupId) async {
+  final repo = ref.read(messagesRepositoryProvider);
+  try {
+    final list = await repo.list(groupId, limit: 20);
+    if (list.isEmpty) return null;
+    // Prefer the item with the largest created_at, else fall back to the last element
+    Map<String, dynamic>? pick;
+    DateTime? best;
+    for (final item in list) {
+      if (item is! Map) continue;
+      final map = item.cast<String, dynamic>();
+      final ts = map['created_at'] ?? map['timestamp'] ?? map['sent_at'] ?? map['time'];
+      if (ts is String) {
+        try {
+          final dt = DateTime.parse(ts);
+          if (best == null || dt.isAfter(best)) {
+            best = dt;
+            pick = map;
+          }
+        } catch (_) {}
+      }
+    }
+    pick ??= (list.last is Map ? (list.last as Map).cast<String, dynamic>() : null);
+    return pick;
+  } catch (_) {}
+  return null;
 });
 
 class GroupsListScreen extends ConsumerStatefulWidget {
@@ -102,21 +132,195 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
                     ? rawId.toInt() 
                     : int.tryParse(rawId?.toString() ?? '') ?? index;
                 final name = g['name']?.toString() ?? 'Group #$id';
-                final type = g['type']?.toString();
-                final members = g['members'] ?? g['member_count'] ?? g['members_count'];
-                final max = g['max_members'] ?? g['capacity'] ?? g['limit'];
-                final subtitleParts = <String>[];
-                if (type != null && type.isNotEmpty) subtitleParts.add(type);
-                if (members != null && max != null) {
-                  subtitleParts.add('$members/$max members');
-                } else if (members != null) {
-                  subtitleParts.add('$members members');
+                final type = (g['type']?.toString() ?? 'public').toLowerCase();
+                final isPrivate = type == 'private';
+                // member counts available but not shown in this compact list item design
+                
+                // Extract last message info robustly
+                String? _formatTime(String? iso) {
+                  if (iso == null || iso.isEmpty) return null;
+                  try {
+                    final dt = DateTime.parse(iso).toLocal();
+                    final h12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+                    final mm = dt.minute.toString().padLeft(2, '0');
+                    final ampm = dt.hour >= 12 ? 'pm' : 'am';
+                    return '$h12:$mm $ampm';
+                  } catch (_) {
+                    return null;
+                  }
                 }
-                return ListTile(
-                  title: Text(name),
-                  subtitle: subtitleParts.isNotEmpty ? Text(subtitleParts.join(' • ')) : null,
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).pushNamed('/chat', arguments: {'id': id, 'name': name, if (type != null) 'type': type}),
+
+                String? lastText;
+                String? lastSender;
+                String? lastAt;
+
+                final last = g['last_message'] ?? g['lastMessage'] ?? g['latest_message'] ?? g['last'] ?? g['recent_message'];
+                if (last is Map) {
+                  lastText = (last['text'] ?? last['message'] ?? last['body'] ?? last['content'])?.toString();
+                  final sender = last['sender'] ?? last['user'] ?? last['from'];
+                  if (sender is Map) {
+                    lastSender = (sender['name'] ?? sender['username'] ?? sender['email'])?.toString();
+                  } else if (sender is String) {
+                    lastSender = sender;
+                  }
+                  lastAt = (last['created_at'] ?? last['timestamp'] ?? last['sent_at'] ?? last['time'])?.toString();
+                } else if (last is String) {
+                  lastText = last;
+                }
+                lastAt ??= (g['last_message_at'] ?? g['updated_at'] ?? g['lastActivityAt'])?.toString();
+                final timeLabel = _formatTime(lastAt) ?? '';
+
+                final lastLine = () {
+                  final t = lastText?.trim();
+                  final s = lastSender?.toString().trim();
+                  if (t == null || t.isEmpty) return null;
+                  if (s == null || s.isEmpty) return t;
+                  return '$s: $t';
+                }();
+
+                final lastAsync = ref.watch(lastMessageProvider(id));
+                return lastAsync.when(
+                  data: (m) {
+                    // Prefer API-provided last message, else fallback to group-derived
+                    String? fmText = lastText;
+                    String? fmSender = lastSender;
+                    String? fmAt = lastAt;
+                    if (m != null) {
+                      fmText = (m['text'] ?? m['message'] ?? m['body'] ?? m['content'])?.toString() ?? fmText;
+                      final sender = m['sender'] ?? m['user'] ?? m['from'];
+                      if (sender is Map) {
+                        fmSender = (sender['name'] ?? sender['username'] ?? sender['email'])?.toString() ?? fmSender;
+                      } else if (sender is String) {
+                        fmSender = sender;
+                      }
+                      fmAt = (m['created_at'] ?? m['timestamp'] ?? m['sent_at'] ?? m['time'])?.toString() ?? fmAt;
+                    }
+                    final fl = () {
+                      final t = fmText?.trim();
+                      final s = fmSender?.toString().trim();
+                      if (t == null || t.isEmpty) return null;
+                      if (s == null || s.isEmpty) return t;
+                      return '$s: $t';
+                    }();
+                    final tlabel = _formatTime(fmAt) ?? timeLabel;
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: ListTile(
+                        title: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                name,
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (tlabel.isNotEmpty)
+                              Text(
+                                tlabel,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                              ),
+                          ],
+                        ),
+                        subtitle: fl != null
+                            ? Padding(
+                                padding: const EdgeInsets.only(left: 0.0, top: 2.0),
+                                child: Text(
+                                  fl,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              )
+                            : null,
+                        onTap: () => Navigator.of(context).pushNamed(
+                          '/chat',
+                          arguments: {
+                            'id': id,
+                            'name': name,
+                            'isPrivate': isPrivate,
+                            'ownerId': g['owner_id'],
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                  loading: () {
+                    // Show tile without last message/time while loading
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: ListTile(
+                        title: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                name,
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        onTap: () => Navigator.of(context).pushNamed(
+                          '/chat',
+                          arguments: {
+                            'id': id,
+                            'name': name,
+                            'isPrivate': isPrivate,
+                            'ownerId': g['owner_id'],
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                  error: (e, st) {
+                    // Fallback to previously computed values
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: ListTile(
+                        title: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                name,
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (timeLabel.isNotEmpty)
+                              Text(
+                                timeLabel,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                              ),
+                          ],
+                        ),
+                        subtitle: lastLine != null
+                            ? Padding(
+                                padding: const EdgeInsets.only(left: 0.0, top: 2.0),
+                                child: Text(
+                                  lastLine,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              )
+                            : null,
+                        onTap: () => Navigator.of(context).pushNamed(
+                          '/chat',
+                          arguments: {
+                            'id': id,
+                            'name': name,
+                            'isPrivate': isPrivate,
+                            'ownerId': g['owner_id'],
+                          },
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             ),

@@ -10,6 +10,12 @@ async function send(req, res, next) {
 
 async function list(req, res, next) {
   try {
+    if (!req.user || !req.user.sub) {
+      const err = new Error('Authentication required');
+      err.status = 401;
+      throw err;
+    }
+    
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     const items = await svc.list(req.params.id, { limit });
     res.json(items);

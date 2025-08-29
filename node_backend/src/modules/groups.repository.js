@@ -154,6 +154,20 @@ async function createGroup(name, type, maxMembers, ownerId, memberIds = []) {
 }
 
 async function getGroupWithMembers(client, groupId) {
+  // If first argument is not a client, it's probably being called with (groupId)
+  if (client && typeof client.query !== 'function') {
+    groupId = client;
+    client = null;
+  }
+
+  const query = async (queryObj) => {
+    if (client) {
+      return client.query(queryObj);
+    }
+    const pool = getPool();
+    return pool.query(queryObj);
+  };
+
   const groupQuery = {
     text: `
       SELECT g.*, 
@@ -168,17 +182,22 @@ async function getGroupWithMembers(client, groupId) {
 
   const membersQuery = {
     text: `
-      SELECT user_id, is_admin, joined_at
-      FROM group_members
-      WHERE group_id = $1
-      ORDER BY joined_at
+      SELECT 
+        gm.user_id, 
+        gm.is_admin, 
+        gm.joined_at,
+        u.email as user_email
+      FROM group_members gm
+      JOIN users u ON gm.user_id = u.id
+      WHERE gm.group_id = $1
+      ORDER BY gm.joined_at
     `,
     values: [groupId]
   };
 
   const [groupResult, membersResult] = await Promise.all([
-    client.query(groupQuery),
-    client.query(membersQuery)
+    query(groupQuery),
+    query(membersQuery)
   ]);
 
   if (!groupResult.rows || groupResult.rows.length === 0) {
@@ -186,7 +205,13 @@ async function getGroupWithMembers(client, groupId) {
   }
 
   const group = groupResult.rows[0];
-  group.members = membersResult.rows;
+  group.members = membersResult.rows.map(row => ({
+    user_id: row.user_id,
+    is_admin: row.is_admin,
+    joined_at: row.joined_at,
+    email: row.user_email,
+    name: row.user_email.split('@')[0] // Use the part before @ as a simple name
+  }));
   
   return group;
 }
@@ -198,7 +223,8 @@ async function listGroups({ limit, userId } = {}) {
   const pool = getPool();
   const params = [];
   let sql = `
-    SELECT g.id, g.name, g.type, g.max_members, g.owner_id,
+    SELECT g.id, g.name, g.type, g.max_members, g.owner_id, 
+           (g.type = 'private') AS is_private,
            COALESCE(COUNT(m.user_id),0)::int AS members,
            CASE WHEN $1::int IS NULL THEN NULL ELSE BOOL_OR(m.user_id = $1::int) END AS is_member
     FROM groups g
@@ -215,22 +241,99 @@ async function listGroups({ limit, userId } = {}) {
 }
 
 async function joinGroup(groupId, userId) {
-  if (!isDbEnabled()) {
-    const g = store.joinGroup(groupId, userId);
-    return { id: g.id, members_count: g.members.size };
+  const pool = getPool();
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Get group details including type and owner
+    const groupResult = await client.query(
+      'SELECT id, owner_id, type, max_members FROM groups WHERE id = $1 FOR UPDATE',
+      [groupId]
+    );
+    
+    if (groupResult.rows.length === 0) {
+      throw new Error('Group not found');
+    }
+    
+    const group = groupResult.rows[0];
+    
+    // Check if user is already a member
+    const memberCheck = await client.query(
+      'SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2',
+      [groupId, userId]
+    );
+    
+    if (memberCheck.rows.length > 0) {
+      // User is already a member, return current member count
+      const countResult = await client.query(
+        'SELECT COUNT(*) FROM group_members WHERE group_id = $1',
+        [groupId]
+      );
+      await client.query('COMMIT');
+      return { id: groupId, members_count: parseInt(countResult.rows[0].count) };
+    }
+    
+    // For private groups, check if user has a pending invitation
+    if (group.type === 'private') {
+      const inviteCheck = await client.query(
+        `SELECT id FROM group_invites 
+         WHERE group_id = $1 AND user_id = $2 AND status = 'pending'`,
+        [groupId, userId]
+      );
+      
+      if (inviteCheck.rows.length === 0 && group.owner_id !== userId) {
+        // No pending invite and user is not the owner
+        const err = new Error('Invitation required to join private group');
+        err.code = 'invitation_required';
+        throw err;
+      }
+      
+      // Mark the invite as accepted if it exists
+      if (inviteCheck.rows.length > 0) {
+        await client.query(
+          `UPDATE group_invites 
+           SET status = 'accepted', updated_at = NOW() 
+           WHERE id = $1`,
+          [inviteCheck.rows[0].id]
+        );
+      }
+    }
+    
+    // Check group capacity
+    const countResult = await client.query(
+      'SELECT COUNT(*) FROM group_members WHERE group_id = $1',
+      [groupId]
+    );
+    
+    const memberCount = parseInt(countResult.rows[0].count);
+    if (memberCount >= group.max_members) {
+      const err = new Error('Group has reached maximum capacity');
+      err.code = 'group_full';
+      throw err;
+    }
+    
+    // Add user to group
+    await client.query(
+      'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)',
+      [groupId, userId]
+    );
+    
+    await client.query('COMMIT');
+    
+    return { 
+      id: groupId, 
+      members_count: memberCount + 1,
+      is_new_member: true
+    };
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-  return withTx(async (client) => {
-    // enforce capacity
-    const { rows } = await client.query('SELECT id, max_members FROM groups WHERE id = $1', [groupId]);
-    if (!rows[0]) throw Object.assign(new Error('not_found'), { status: 404, code: 'not_found' });
-    const g = rows[0];
-    const { rows: cntRows } = await client.query('SELECT COUNT(*)::int AS c FROM group_members WHERE group_id = $1', [groupId]);
-    const count = cntRows[0].c;
-    if (count >= g.max_members) throw Object.assign(new Error('group_full'), { status: 400, code: 'group_full' });
-    await client.query('INSERT INTO group_members (group_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [groupId, userId]);
-    const { rows: after } = await client.query('SELECT COUNT(*)::int AS c FROM group_members WHERE group_id = $1', [groupId]);
-    return { id: Number(groupId), members_count: after[0].c };
-  });
 }
 
 async function leaveGroup(groupId, userId) {
@@ -270,4 +373,42 @@ module.exports = {
   leaveGroup,
   transferOwner,
   deleteGroup,
+  getGroupWithMembers,
 };
+
+// Update group properties (name, type, max_members)
+async function updateGroup(groupId, { name, type, max_members } = {}) {
+  if (!isDbEnabled()) {
+    const g = store.getGroup(Number(groupId));
+    if (!g) throw Object.assign(new Error('not_found'), { status: 404, code: 'not_found' });
+    if (typeof name === 'string' && name.trim()) g.name = name.trim();
+    if (typeof type === 'string' && type.trim()) g.type = type.trim().toLowerCase() === 'public' ? 'open' : type.trim().toLowerCase();
+    if (max_members !== undefined && max_members !== null) {
+      const mm = Number(max_members);
+      if (!Number.isNaN(mm) && mm > 0) g.max_members = mm;
+    }
+    return g;
+  }
+  const pool = getPool();
+  const sets = [];
+  const vals = [];
+  let i = 1;
+  if (typeof name === 'string' && name.trim()) { sets.push(`name = $${i++}`); vals.push(name.trim()); }
+  if (typeof type === 'string' && type.trim()) { 
+    const t = type.trim().toLowerCase() === 'public' ? 'open' : type.trim().toLowerCase();
+    sets.push(`type = $${i++}`); vals.push(t); 
+  }
+  if (max_members !== undefined && max_members !== null) { sets.push(`max_members = $${i++}`); vals.push(Number(max_members)); }
+  if (sets.length === 0) {
+    const { rows } = await pool.query('SELECT * FROM groups WHERE id = $1', [groupId]);
+    if (!rows[0]) throw Object.assign(new Error('not_found'), { status: 404, code: 'not_found' });
+    return rows[0];
+  }
+  vals.push(groupId);
+  const sql = `UPDATE groups SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`;
+  const { rows } = await pool.query(sql, vals);
+  if (!rows[0]) throw Object.assign(new Error('not_found'), { status: 404, code: 'not_found' });
+  return rows[0];
+}
+
+module.exports.updateGroup = updateGroup;
