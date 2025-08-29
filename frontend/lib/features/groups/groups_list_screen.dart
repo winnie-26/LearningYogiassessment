@@ -94,7 +94,8 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
                   return _SearchBar(controller: _search, onChanged: (_) => setState(() {}));
                 }
                 final g = filtered[index - 1];
-                final id = g['id'] ?? g['group_id'] ?? index;
+                final rawId = g['id'] ?? g['group_id'] ?? index;
+                final id = rawId is num ? rawId.toInt() : int.tryParse(rawId.toString()) ?? index;
                 final name = g['name']?.toString() ?? 'Group #$id';
                 final type = g['type']?.toString();
                 final members = g['members'] ?? g['member_count'] ?? g['members_count'];
@@ -110,7 +111,7 @@ class _GroupsListScreenState extends ConsumerState<GroupsListScreen> {
                   title: Text(name),
                   subtitle: subtitleParts.isNotEmpty ? Text(subtitleParts.join(' • ')) : null,
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).pushNamed('/group', arguments: {'id': id}),
+                  onTap: () => Navigator.of(context).pushNamed('/chat', arguments: {'id': id, 'name': name, if (type != null) 'type': type}),
                 );
               },
             ),

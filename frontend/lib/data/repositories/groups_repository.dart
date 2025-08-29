@@ -43,8 +43,8 @@ class GroupsRepository {
     return <dynamic>[];
   }
 
-  Future<Map<String, dynamic>> create(String name, String type, int maxMembers) async {
-    final res = await _api.createGroup(name, type, maxMembers);
+  Future<Map<String, dynamic>> create(String name, String type, int maxMembers, {List<int>? memberIds}) async {
+    final res = await _api.createGroup(name, type, maxMembers, memberIds: memberIds);
     return (res.data as Map<String, dynamic>);
   }
 

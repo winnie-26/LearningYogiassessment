@@ -24,10 +24,27 @@ module.exports = {
   },
   findUserByEmail(email) { return usersByEmail.get(email) || null; },
   findUserById(id) { return users.get(id) || null; },
+  listUsers({ q, limit } = {}) {
+    let arr = Array.from(users.values()).map(u => ({ id: u.id, email: u.email }));
+    if (q && typeof q === 'string' && q.trim()) {
+      const qc = q.toLowerCase();
+      arr = arr.filter(u => u.email.toLowerCase().includes(qc));
+    }
+    if (typeof limit === 'number') return arr.slice(0, limit);
+    return arr;
+  },
 
   // groups
-  createGroup(name, type, max_members, owner_id) {
+  createGroup(name, type, max_members, owner_id, member_ids = []) {
     const g = { id: groupIdSeq++, name, type, max_members, owner_id, members: new Set([owner_id]) };
+    // Add initial members (excluding duplicates and owner)
+    if (Array.isArray(member_ids)) {
+      for (const uid of member_ids) {
+        if (typeof uid !== 'number') continue;
+        if (g.members.size >= max_members) break;
+        if (uid !== owner_id) g.members.add(uid);
+      }
+    }
     groups.set(g.id, g);
     return g;
   },

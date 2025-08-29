@@ -20,14 +20,14 @@ async function create(req, res, next) {
 async function join(req, res, next) {
   try {
     const g = await svc.join(req.params.id, req.user.sub);
-    res.json({ ok: true, group_id: g.id, members: g.members.size });
+    res.json({ ok: true, group_id: g.id, members: g.members_count });
   } catch (e) { next(e); }
 }
 
 async function leave(req, res, next) {
   try {
     const g = await svc.leave(req.params.id, req.user.sub);
-    res.json({ ok: true, group_id: g.id, members: g.members.size });
+    res.json({ ok: true, group_id: g.id, members: g.members_count });
   } catch (e) { next(e); }
 }
 

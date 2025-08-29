@@ -28,10 +28,11 @@ class ApiClient {
   Future<Response> listGroups({int? limit}) => _dio.get('/api/v1/groups', queryParameters: {
         if (limit != null) 'limit': limit,
       });
-  Future<Response> createGroup(String name, String type, int maxMembers) => _dio.post('/api/v1/groups', data: {
+  Future<Response> createGroup(String name, String type, int maxMembers, {List<int>? memberIds}) => _dio.post('/api/v1/groups', data: {
         'name': name,
         'type': type,
         'max_members': maxMembers,
+        if (memberIds != null && memberIds.isNotEmpty) 'member_ids': memberIds,
       });
   Future<Response> joinGroup(int id) => _dio.post('/api/v1/groups/$id/join');
   Future<Response> leaveGroup(int id) => _dio.post('/api/v1/groups/$id/leave');
@@ -60,4 +61,10 @@ class ApiClient {
           if (before != null) 'before': before,
         },
       );
+
+  // Users
+  Future<Response> listUsers({String? q, int? limit}) => _dio.get('/api/v1/users', queryParameters: {
+        if (q != null && q.isNotEmpty) 'q': q,
+        if (limit != null) 'limit': limit,
+      });
 }
