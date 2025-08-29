@@ -203,6 +203,32 @@ class WebSocketServer {
     this.sendMessage(ws, { type: 'error', message: error });
   }
 
+  // Broadcast new message from API to WebSocket clients
+  broadcastNewMessage(groupId, message) {
+    const groupConnections = this.groupConnections.get(parseInt(groupId));
+    if (!groupConnections) {
+      console.log(`[WebSocket] No connections found for group ${groupId}`);
+      return;
+    }
+
+    // Ensure the message has the correct type field for frontend filtering
+    const messageToSend = {
+      ...message,
+      type: 'new_message', // This must match what frontend expects
+    };
+
+    console.log('[WebSocket] Broadcasting message:', messageToSend);
+    const messageString = JSON.stringify(messageToSend);
+
+    groupConnections.forEach((ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(messageString);
+      }
+    });
+
+    console.log(`[WebSocket] Broadcasted message to ${groupConnections.size} clients in group ${groupId}`);
+  }
+
   // Heartbeat to keep connections alive
   startHeartbeat() {
     setInterval(() => {
