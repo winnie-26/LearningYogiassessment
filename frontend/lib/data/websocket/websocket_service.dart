@@ -42,7 +42,13 @@ class WebSocketService {
             print('WebSocket received: $data'); // Debug log
             final message = jsonDecode(data);
             print('Parsed message: $message'); // Debug log
-            _messageController?.add(message);
+            
+            // Only forward new_message types to the message controller
+            if (message['type'] == 'new_message') {
+              _messageController?.add(message);
+            } else {
+              print('Ignoring non-message type: ${message['type']}');
+            }
           } catch (e) {
             print('Error parsing WebSocket message: $e');
           }

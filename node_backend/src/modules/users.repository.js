@@ -61,3 +61,18 @@ async function listUsers({ q, limit, offset } = {}) {
 }
 
 module.exports = { listUsers };
+
+// Get a single user by ID
+async function getUserById(id) {
+  if (!isDbEnabled()) {
+    const all = store.listUsers({});
+    const found = all.find(u => String(u.id) === String(id));
+    if (!found) return null;
+    return { id: found.id, email: found.email };
+  }
+  const pool = getPool();
+  const { rows } = await pool.query('SELECT id, email FROM users WHERE id = $1', [id]);
+  return rows[0] || null;
+}
+
+module.exports.getUserById = getUserById;

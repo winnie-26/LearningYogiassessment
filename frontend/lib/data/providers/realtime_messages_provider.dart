@@ -60,8 +60,26 @@ class CombinedMessagesNotifier extends StateNotifier<AsyncValue<List<Map<String,
   }
 
   void _addRealtimeMessage(Map<String, dynamic> message) {
+    print('Adding realtime message: $message'); // Debug log
+    
+    // Filter out the 'type' field and ensure proper format
+    final formattedMessage = <String, dynamic>{
+      'id': message['id'],
+      'text': message['text'] ?? '',
+      'sender': message['sender'] ?? {
+        'id': message['user_id'] ?? message['sender_id'],
+        'name': 'Unknown',
+        'email': 'unknown@example.com'
+      },
+      'group_id': message['group_id'],
+      'user_id': message['user_id'] ?? message['sender_id'],
+      'created_at': message['created_at'] ?? DateTime.now().toIso8601String(),
+    };
+    
+    print('Formatted message: $formattedMessage'); // Debug log
+    
     // Add new message to the end of the list (chronological order)
-    _messages = [..._messages, message];
+    _messages = [..._messages, formattedMessage];
     _unreadCount++;
     state = AsyncValue.data(_messages);
     

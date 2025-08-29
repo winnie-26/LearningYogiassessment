@@ -28,15 +28,13 @@ class MessagesRepository {
   // Get real-time message stream
   Stream<Map<String, dynamic>> get messageStream => _webSocket.messageStream;
 
-  // Send message via API and WebSocket
+  // Send message via API only (WebSocket will receive from API broadcast)
   Future<void> send(int groupId, String text) async {
-    // Send via API first
+    // Send via API - the backend will broadcast to WebSocket clients
     await _api.sendMessage(groupId, text);
     
-    // Also send via WebSocket for real-time delivery
-    final user = await _auth.getCurrentUser();
-    final senderId = user?['id']?.toString() ?? '';
-    _webSocket.sendMessage(text, senderId);
+    // Don't send via WebSocket directly to avoid duplicates
+    // The backend controller will broadcast the message to WebSocket clients
   }
 
   // Disconnect WebSocket

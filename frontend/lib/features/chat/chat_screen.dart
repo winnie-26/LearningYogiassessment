@@ -76,6 +76,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _resolvedOwnerId;
   bool _isAtBottom = true;
   bool _showScrollToBottom = false;
+  bool _didInitialAutoScroll = false;
 
   @override
   void initState() {
@@ -358,12 +359,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   onRefresh: messagesNotifier.refresh,
                   child: messagesAsync.when(
                     data: (messages) {
+                    // One-time auto-scroll to bottom after first successful load
+                    if (!_didInitialAutoScroll && messages.isNotEmpty) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted && _scrollController.hasClients) {
+                          _scrollToBottom();
+                          setState(() { _didInitialAutoScroll = true; });
+                        }
+                      });
+                    }
                     if (messages.isEmpty) {
                       return const Center(child: Text('No messages yet'));
                     }
                     return Stack(
                       children: [
                         ListView.builder(
+                          key: PageStorageKey('chat_list_' + groupId.toString()),
                           controller: _scrollController,
                           padding: const EdgeInsets.all(8.0),
                           itemCount: messages.length,
