@@ -10,7 +10,12 @@
     "migrate": "node scripts/run-migration.js",
     "migrate:rollback": "node scripts/rollback-migration.js",
     "test": "jest --passWithNoTests",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "build": "echo 'No build step required'"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
