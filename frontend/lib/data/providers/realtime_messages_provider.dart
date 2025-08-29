@@ -27,6 +27,22 @@ class CombinedMessagesNotifier extends StateNotifier<AsyncValue<List<Map<String,
   final int groupId;
   StreamSubscription? _realtimeSubscription;
   List<Map<String, dynamic>> _messages = [];
+  bool _hasMore = true;
+  bool _isLoading = false;
+  int _unreadCount = 0;
+  Function()? _onNewMessage;
+
+  bool get hasMore => _hasMore;
+  bool get isLoading => _isLoading;
+  int get unreadCount => _unreadCount;
+
+  void setNewMessageCallback(Function() callback) {
+    _onNewMessage = callback;
+  }
+
+  void markAllAsRead() {
+    _unreadCount = 0;
+  }
 
   Future<void> _init() async {
     try {
@@ -44,20 +60,46 @@ class CombinedMessagesNotifier extends StateNotifier<AsyncValue<List<Map<String,
   }
 
   void _addRealtimeMessage(Map<String, dynamic> message) {
-    // Add new message to the beginning of the list (most recent first)
-    _messages = [message, ..._messages];
+    // Add new message to the end of the list (chronological order)
+    _messages = [..._messages, message];
+    _unreadCount++;
     state = AsyncValue.data(_messages);
+    
+    // Notify callback if set
+    _onNewMessage?.call();
   }
 
   Future<void> loadMessages({bool loadMore = false}) async {
-    if (state.isLoading && !loadMore) return;
+    if (_isLoading || (!loadMore && state.hasValue && state.value!.isNotEmpty)) return;
+    
+    _isLoading = true;
     
     try {
-      final newMessages = await _messagesRepo.list(groupId, limit: 20);
-      _messages = newMessages.cast<Map<String, dynamic>>();
+      final currentMessages = state.value ?? [];
+      
+      final oldestMessage = loadMore && currentMessages.isNotEmpty 
+          ? currentMessages.first['created_at'] as String 
+          : null;
+      
+      final newMessages = await _messagesRepo.list(
+        groupId, 
+        limit: 20, 
+        before: oldestMessage,
+      );
+      
+      _hasMore = newMessages.length == 20;
+      
+      final updatedMessages = <Map<String, dynamic>>[
+        ...(loadMore ? currentMessages : []),
+        ...newMessages.cast<Map<String, dynamic>>(),
+      ];
+      
+      _messages = updatedMessages;
       state = AsyncValue.data(_messages);
     } catch (e) {
       state = AsyncValue.error(e, StackTrace.current);
+    } finally {
+      _isLoading = false;
     }
   }
 

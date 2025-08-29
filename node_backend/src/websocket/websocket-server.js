@@ -148,16 +148,18 @@ class WebSocketServer {
       return;
     }
 
-    // Create message object to broadcast
+    // Create message object to broadcast with proper format matching API response
     const broadcastMessage = {
       type: 'new_message',
       id: Date.now(), // Simple ID generation
-      text,
+      text: text || '',
       sender: {
         id: sender_id || ws.userId,
-        name: 'User' // You might want to fetch this from database
+        name: `User${sender_id || ws.userId}`, // Generate a name based on user ID
+        email: `user${sender_id || ws.userId}@example.com`
       },
       group_id: group_id || ws.groupId,
+      user_id: sender_id || ws.userId,
       created_at: new Date().toISOString()
     };
 

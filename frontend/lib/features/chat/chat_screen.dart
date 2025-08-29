@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/data/api/api_client.dart';
 import '../../data/repositories/messages_repository.dart';
 import '../../data/repositories/groups_repository.dart';
-import '../../data/repositories/auth_repository.dart';
 import '../../data/providers/realtime_messages_provider.dart';
 import '../../core/providers.dart';
 
@@ -71,16 +70,66 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
-  final _text = TextEditingController();
+  final TextEditingController _text = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   bool _sending = false;
-  final _scrollController = ScrollController();
-  String? _resolvedOwnerId; // Fallback owner id resolved from repository
+  String? _resolvedOwnerId;
+  bool _isAtBottom = true;
+  bool _showScrollToBottom = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
     _text.dispose();
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.hasClients) {
+      final isAtBottom = _scrollController.position.pixels >= 
+          _scrollController.position.maxScrollExtent - 100;
+      
+      if (_isAtBottom != isAtBottom) {
+        setState(() {
+          _isAtBottom = isAtBottom;
+          _showScrollToBottom = !isAtBottom;
+        });
+        
+        // Mark messages as read when at bottom
+        if (isAtBottom) {
+          final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {};
+          final rawId = args['id'] ?? 0;
+          final groupId = rawId is num ? rawId.toInt() : int.tryParse(rawId.toString()) ?? 0;
+          ref.read(combinedMessagesProvider(groupId).notifier).markAllAsRead();
+        }
+      }
+    }
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _onNewMessage() {
+    // Auto-scroll to bottom if user is already at bottom
+    if (_isAtBottom && _scrollController.hasClients) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToBottom();
+      });
+    }
   }
 
   Future<void> _toggleGroupPrivacy() async {
@@ -276,20 +325,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         debugPrint('Owner ID: $normalizedOwnerId, Current User ID: $normalizedCurrentUserId');
         final isOwner = normalizedOwnerId != null && normalizedCurrentUserId != null && normalizedOwnerId == normalizedCurrentUserId;
         debugPrint('Is owner: $isOwner');
-        final messagesAsync = ref.watch(messagesProvider(groupId));
-        final messagesNotifier = ref.read(messagesProvider(groupId).notifier);
-    
-    // Handle scroll to load more
-    void _onScroll() {
-      if (_scrollController.position.pixels > _scrollController.position.maxScrollExtent - 100) {
-        if (messagesNotifier.hasMore && !messagesNotifier.isLoading) {
-          messagesNotifier.loadMessages(loadMore: true);
-        }
-      }
-    }
-    
-    // Add scroll listener
-    _scrollController.addListener(_onScroll);
+        final messagesAsync = ref.watch(combinedMessagesProvider(groupId));
+        final messagesNotifier = ref.read(combinedMessagesProvider(groupId).notifier);
+        
+        // Set up new message callback for auto-scroll
+        messagesNotifier.setNewMessageCallback(_onNewMessage);
 
         return Scaffold(
           resizeToAvoidBottomInset: true,
@@ -321,11 +361,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     if (messages.isEmpty) {
                       return const Center(child: Text('No messages yet'));
                     }
-                    return ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.all(8.0),
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
+                    return Stack(
+                      children: [
+                        ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.all(8.0),
+                          itemCount: messages.length,
+                          itemBuilder: (context, index) {
                         final message = messages[index];
                         final senderMap = message['sender'];
                         final senderName = senderMap?['name']?.toString() ?? 'Unknown';
@@ -569,6 +611,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           ),
                         );
                       },
+                    ),
+                        // Scroll to bottom button with unread count
+                        if (_showScrollToBottom)
+                          Positioned(
+                            bottom: 16,
+                            right: 16,
+                            child: FloatingActionButton.small(
+                              onPressed: _scrollToBottom,
+                              backgroundColor: Theme.of(context).primaryColor,
+                              child: Stack(
+                                children: [
+                                  const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+                                  if (messagesNotifier.unreadCount > 0)
+                                    Positioned(
+                                      right: 0,
+                                      top: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red,
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        constraints: const BoxConstraints(
+                                          minWidth: 16,
+                                          minHeight: 16,
+                                        ),
+                                        child: Text(
+                                          '${messagesNotifier.unreadCount}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
                     );
                   },
                     loading: () => const Center(child: CircularProgressIndicator()),
@@ -645,18 +729,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (e, st) {
         // In case of error determining current user, default to non-owner UI
-        final messagesAsync = ref.watch(messagesProvider(groupId));
-        final messagesNotifier = ref.read(messagesProvider(groupId).notifier);
-
-        // Handle scroll to load more
-        void _onScroll() {
-          if (_scrollController.position.pixels > _scrollController.position.maxScrollExtent - 100) {
-            if (messagesNotifier.hasMore && !messagesNotifier.isLoading) {
-              messagesNotifier.loadMessages(loadMore: true);
-            }
-          }
-        }
-        _scrollController.addListener(_onScroll);
+        final messagesAsync = ref.watch(combinedMessagesProvider(groupId));
+        final messagesNotifier = ref.read(combinedMessagesProvider(groupId).notifier);
+        
+        // Set up new message callback for auto-scroll
+        messagesNotifier.setNewMessageCallback(_onNewMessage);
 
         return Scaffold(
           resizeToAvoidBottomInset: true,
@@ -778,7 +855,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await repo.send(groupId, _text.text);
       _text.clear();
       // Refresh the messages to show the new one
-      ref.read(messagesProvider(groupId).notifier).refresh();
+      ref.read(combinedMessagesProvider(groupId).notifier).refresh();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

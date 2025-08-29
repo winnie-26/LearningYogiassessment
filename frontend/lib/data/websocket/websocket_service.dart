@@ -25,8 +25,9 @@ class WebSocketService {
       _currentGroupId = groupId;
       _messageController = StreamController<Map<String, dynamic>>.broadcast();
       
-      // WebSocket URL matching backend configuration
-      final wsUrl = 'ws://localhost:8080/ws';
+      // WebSocket URL for Render deployment (wss for secure WebSocket)
+      final wsUrl = 'wss://learningyogiassessment-2.onrender.com/ws';
+      print('Connecting to WebSocket: $wsUrl'); // Debug log
       
       _channel = WebSocketChannel.connect(
         Uri.parse(wsUrl),
@@ -38,7 +39,9 @@ class WebSocketService {
       _channel!.stream.listen(
         (data) {
           try {
+            print('WebSocket received: $data'); // Debug log
             final message = jsonDecode(data);
+            print('Parsed message: $message'); // Debug log
             _messageController?.add(message);
           } catch (e) {
             print('Error parsing WebSocket message: $e');
@@ -57,11 +60,13 @@ class WebSocketService {
       );
 
       // Send authentication message
-      _channel!.sink.add(jsonEncode({
+      final authMessage = {
         'type': 'auth',
         'token': token,
         'groupId': groupId,
-      }));
+      };
+      print('Sending auth message: $authMessage'); // Debug log
+      _channel!.sink.add(jsonEncode(authMessage));
 
       _isConnected = true;
       _startHeartbeat();
@@ -93,13 +98,17 @@ class WebSocketService {
 
   void sendMessage(String text, String senderId) {
     if (_isConnected && _channel != null) {
-      _channel!.sink.add(jsonEncode({
+      final messageData = {
         'type': 'message',
         'text': text,
         'sender_id': senderId,
         'group_id': _currentGroupId,
         'timestamp': DateTime.now().toIso8601String(),
-      }));
+      };
+      print('Sending WebSocket message: $messageData'); // Debug log
+      _channel!.sink.add(jsonEncode(messageData));
+    } else {
+      print('WebSocket not connected, cannot send message'); // Debug log
     }
   }
 

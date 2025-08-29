@@ -5,9 +5,18 @@ async function send(req, res, next) {
     const { text } = req.body || {};
     const msg = await svc.send(req.params.id, req.user.sub, text);
     
-    // Broadcast message to WebSocket clients
+    // Broadcast message to WebSocket clients with proper format
     if (global.wsServer) {
-      global.wsServer.broadcastNewMessage(req.params.id, msg);
+      // Ensure the message has the same format as API response
+      const broadcastMsg = {
+        ...msg,
+        sender: msg.sender || {
+          id: req.user.sub,
+          name: `User${req.user.sub}`,
+          email: `user${req.user.sub}@example.com`
+        }
+      };
+      global.wsServer.broadcastNewMessage(req.params.id, broadcastMsg);
     }
     
     res.status(201).json(msg);
