@@ -4,16 +4,18 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node src/server.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET
-        generateValue: true
+        value: devsecret
+      - key: ACCESS_TTL_SECONDS
+        value: 3600
+      - key: REFRESH_TTL_SECONDS
+        value: 2592000
       - key: DATABASE_URL
-        fromDatabase:
-          name: learningyogi-db
-          property: connectionString
+        value: postgresql://ly_db_user:6kRTAIY0foqFInXGmYaeBDOEGKACcM2G@dpg-d2o89b6uk2gs73akcutg-a.singapore-postgres.render.com/ly_db?sslmode=require
     autoDeploy: false
 
 databases:
