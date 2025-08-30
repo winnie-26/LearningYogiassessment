@@ -1,27 +1,4 @@
 const repo = require('./users.repository');
-const { NotFoundError } = require('../errors');
-
-// Update user's FCM token
-async function updateFcmToken(req, res, next) {
-  try {
-    const { userId } = req.params;
-    const { fcmToken } = req.body;
-    
-    if (!fcmToken) {
-      return res.status(400).json({ error: 'FCM token is required' });
-    }
-    
-    const updatedUser = await repo.updateFcmToken(userId, fcmToken);
-    
-    if (!updatedUser) {
-      throw new NotFoundError('User not found');
-    }
-    
-    res.json({ message: 'FCM token updated successfully' });
-  } catch (error) {
-    next(error);
-  }
-}
 
 async function list(req, res, next) {
   try {
@@ -47,7 +24,4 @@ async function list(req, res, next) {
   } catch (e) { next(e); }
 }
 
-module.exports = { 
-  list, 
-  updateFcmToken 
-};
+module.exports = { list };

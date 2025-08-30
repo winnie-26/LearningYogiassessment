@@ -1,7 +1,6 @@
 const repo = require('./messages.repository');
 const groupsRepo = require('./groups.repository');
 const { withTx } = require('../data/db');
-const notificationService = require('../services/notification.service');
 
 async function send(groupId, userId, text) {
   if (!text || typeof text !== 'string') {
@@ -28,45 +27,9 @@ async function send(groupId, userId, text) {
     throw err;
   }
   
-  const message = await withTx(async (client) => {
+  return withTx(async (client) => {
     return await repo.add(client, gid, userId, text);
   });
-
-  // Send notifications to other group members in the background
-  try {
-    // Get group info and members
-    const group = await withTx(async (client) => {
-      return await groupsRepo.getGroupWithMembers(client, gid);
-    });
-
-    if (group && group.members && group.members.length > 0) {
-      // Get user IDs of all members except the sender
-      const recipientIds = group.members
-        .filter(member => member.user_id !== userId && member.status === 'active')
-        .map(member => member.user_id.toString());
-
-      if (recipientIds.length > 0) {
-        // Truncate message for notification
-        const messagePreview = text.length > 100 ? text.substring(0, 100) + '...' : text;
-        
-        // Send notifications in the background (don't await)
-        notificationService.sendNewMessage(
-          userId,
-          recipientIds,
-          gid,
-          group.name,
-          messagePreview
-        ).catch(error => {
-          console.error('Error sending message notifications:', error);
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Error processing message notifications:', error);
-    // Don't fail the message send if notifications fail
-  }
-
-  return message;
 }
 
 async function list(groupId, { limit } = {}) {

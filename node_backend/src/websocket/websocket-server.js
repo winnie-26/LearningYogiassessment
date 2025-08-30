@@ -79,16 +79,14 @@ class WebSocketServer {
   }
 
   async handleAuth(ws, message) {
-    console.log('[WebSocket] ===== HANDLING AUTH =====');
-    console.log('[WebSocket] Auth message:', JSON.stringify(message, null, 2));
+    console.log('[WebSocket] Handling auth message:', message);
     const { token, groupId } = message;
-    
+
     if (!token) {
-      const error = 'No token provided';
+      const error = 'Token required';
       console.error(`[WebSocket] ${error}`);
       this.sendError(ws, error);
-      ws.close(StatusCodes.UNAUTHORIZED);
-      return;
+      return ws.close(StatusCodes.UNAUTHORIZED);
     }
 
     try {
@@ -102,23 +100,14 @@ class WebSocketServer {
         decoded = jwt.verify(token, process.env.JWT_SECRET);
       }
       
-      const userId = decoded.sub || decoded.user_id || decoded.id;
-      const groupIdNum = parseInt(groupId);
-      
-      ws.userId = userId;
-      ws.groupId = groupIdNum;
-
-      console.log(`[WebSocket] Parsed userId: ${userId}, groupId: ${groupIdNum}`);
+      ws.userId = decoded.sub || decoded.user_id || decoded.id;
+      ws.groupId = groupId;
 
       // Add to group connections
-      if (!this.groupConnections.has(groupIdNum)) {
-        console.log(`[WebSocket] Creating new group connection set for group ${groupIdNum}`);
-        this.groupConnections.set(groupIdNum, new Set());
+      if (!this.groupConnections.has(groupId)) {
+        this.groupConnections.set(groupId, new Set());
       }
-      this.groupConnections.get(groupIdNum).add(ws);
-
-      console.log(`[WebSocket] Group ${groupIdNum} now has ${this.groupConnections.get(groupIdNum).size} connections`);
-      console.log(`[WebSocket] All active groups:`, Array.from(this.groupConnections.keys()));
+      this.groupConnections.get(groupId).add(ws);
 
       this.sendMessage(ws, { 
         type: 'auth_success', 
@@ -126,8 +115,7 @@ class WebSocketServer {
         groupId: ws.groupId
       });
 
-      console.log(`[WebSocket] User ${userId} authenticated for group ${groupIdNum}`);
-      console.log('[WebSocket] ===== AUTH COMPLETE =====');
+      console.log(`[WebSocket] User ${ws.userId} authenticated for group ${groupId}`);
     } catch (error) {
       console.error('[WebSocket] Auth error:', error);
       this.sendError(ws, 'Invalid token');
@@ -136,12 +124,8 @@ class WebSocketServer {
   }
 
   async handleJoinGroup(ws, message) {
-    console.log('[WebSocket] ===== HANDLING JOIN GROUP =====');
-    console.log('[WebSocket] Message:', JSON.stringify(message, null, 2));
-    console.log('[WebSocket] User ID:', ws.userId);
-    
+    console.log('[WebSocket] Handling join group:', message);
     const { groupId } = message;
-    const groupIdNum = parseInt(groupId);
     
     if (!ws.userId) {
       const error = 'Not authenticated';
@@ -150,24 +134,17 @@ class WebSocketServer {
       return;
     }
 
-    console.log(`[WebSocket] User ${ws.userId} joining group ${groupIdNum}`);
-
     // Remove from previous group if any
     if (ws.groupId && this.groupConnections.has(ws.groupId)) {
-      console.log(`[WebSocket] Removing user ${ws.userId} from previous group ${ws.groupId}`);
       this.groupConnections.get(ws.groupId).delete(ws);
     }
 
     // Add to new group
-    ws.groupId = groupIdNum;
-    if (!this.groupConnections.has(groupIdNum)) {
-      console.log(`[WebSocket] Creating new group connection set for group ${groupIdNum}`);
-      this.groupConnections.set(groupIdNum, new Set());
+    ws.groupId = groupId;
+    if (!this.groupConnections.has(groupId)) {
+      this.groupConnections.set(groupId, new Set());
     }
-    this.groupConnections.get(groupIdNum).add(ws);
-    
-    console.log(`[WebSocket] Group ${groupIdNum} now has ${this.groupConnections.get(groupIdNum).size} connections`);
-    console.log(`[WebSocket] All active groups:`, Array.from(this.groupConnections.keys()));
+    this.groupConnections.get(groupId).add(ws);
 
     this.sendMessage(ws, { 
       type: 'joined_group', 
@@ -176,64 +153,34 @@ class WebSocketServer {
 
     console.log(`[WebSocket] User ${ws.userId} joined group ${groupId}`);
   }
- 
+
   async handleChatMessage(ws, message) {
     const { text, group_id, sender_id } = message;
-    const userId = sender_id || ws.userId;
 
     if (!ws.userId || !ws.groupId) {
       this.sendError(ws, 'Not authenticated or not in a group');
       return;
     }
 
-    try {
-      // Get user details from the database
-      const userRepo = require('../modules/users.repository');
-      console.log(`[WebSocket] Fetching user with ID: ${userId}`);
-      const user = await userRepo.findById(userId);
-      
-      if (!user) {
-        console.error(`[WebSocket] User ${userId} not found`);
-        this.sendError(ws, 'User not found');
-        return;
-      }
-      
-      console.log(`[WebSocket] Found user:`, user); // Log the user object
+    // Create message object to broadcast with proper format matching API response
+    const broadcastMessage = {
+      type: 'new_message',
+      id: Date.now(), // Simple ID generation
+      text: text || '',
+      sender: {
+        id: sender_id || ws.userId,
+        name: `User${sender_id || ws.userId}`, // Generate a name based on user ID
+        email: `user${sender_id || ws.userId}@example.com`
+      },
+      group_id: group_id || ws.groupId,
+      user_id: sender_id || ws.userId,
+      created_at: new Date().toISOString()
+    };
 
-      // Get the username from email or use a fallback
-      let email = user.email;
-      if (!email) {
-        console.warn(`[WebSocket] No email found for user ${userId}, using fallback`);
-        email = `user${userId}@example.com`;
-      }
-      const emailPrefix = email.split('@')[0];
-      
-      // Create message object to broadcast with proper format matching API response
-      const broadcastMessage = {
-        type: 'new_message',
-        id: Date.now(), // Simple ID generation
-        text: text || '',
-        sender: {
-          id: user.id || userId,
-          // Use email prefix as the display name
-          name: emailPrefix,
-          email: email,
-          username: emailPrefix
-        },
-        group_id: group_id || ws.groupId,
-        user_id: userId,
-        created_at: new Date().toISOString()
-      };
-      
-      console.log('Broadcasting message with sender:', broadcastMessage.sender);
+    // Broadcast to all clients in the group
+    this.broadcastToGroup(ws.groupId, broadcastMessage);
 
-      // Broadcast to all clients in the group
-      this.broadcastToGroup(ws.groupId, broadcastMessage);
-      console.log(`[WebSocket] Message broadcasted to group ${ws.groupId}`);
-    } catch (error) {
-      console.error('[WebSocket] Error handling chat message:', error);
-      this.sendError(ws, 'Error processing message');
-    }
+    console.log(`[WebSocket] Message broadcasted to group ${ws.groupId}`);
   }
 
   handleDisconnection(ws) {
@@ -270,6 +217,32 @@ class WebSocketServer {
     this.sendMessage(ws, { type: 'error', message: error });
   }
 
+  // Broadcast new message from API to WebSocket clients
+  broadcastNewMessage(groupId, message) {
+    const groupConnections = this.groupConnections.get(parseInt(groupId));
+    if (!groupConnections) {
+      console.log(`[WebSocket] No connections found for group ${groupId}`);
+      return;
+    }
+
+    // Ensure the message has the correct type field for frontend filtering
+    const messageToSend = {
+      ...message,
+      type: 'new_message', // This must match what frontend expects
+    };
+
+    console.log('[WebSocket] Broadcasting message:', messageToSend);
+    const messageString = JSON.stringify(messageToSend);
+
+    groupConnections.forEach((ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(messageString);
+      }
+    });
+
+    console.log(`[WebSocket] Broadcasted message to ${groupConnections.size} clients in group ${groupId}`);
+  }
+
   // Heartbeat to keep connections alive
   startHeartbeat() {
     setInterval(() => {
@@ -286,39 +259,12 @@ class WebSocketServer {
 
   // Broadcast new message from API to WebSocket clients
   broadcastNewMessage(groupId, message) {
-    const groupConnections = this.groupConnections.get(parseInt(groupId));
-    if (!groupConnections) {
-      console.log(`[WebSocket] No connections found for group ${groupId}`);
-      return;
-    }
-
-    // Ensure the message has the correct format for frontend
-    const messageToSend = {
+    const broadcastMessage = {
       type: 'new_message',
-      id: message.id || Date.now(),
-      text: message.text || '',
-      group_id: groupId,
-      user_id: message.user_id || message.sender?.id,
-      created_at: message.created_at || new Date().toISOString(),
-      sender: {
-        id: message.sender?.id || message.user_id,
-        name: message.sender?.name || `user_${message.user_id || 'unknown'}`,
-        email: message.sender?.email || `user_${message.user_id || 'unknown'}@example.com`,
-        username: message.sender?.username || (message.sender?.email ? message.sender.email.split('@')[0] : `user_${message.user_id || 'unknown'}`)
-      }
+      ...message
     };
-
-    console.log('[WebSocket] Broadcasting message:', messageToSend);
-    const messageString = JSON.stringify(messageToSend);
-
-    // Send to all clients in the group
-    groupConnections.forEach((ws) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(messageString);
-      }
-    });
-
-    console.log(`[WebSocket] Broadcasted message to ${groupConnections.size} clients in group ${groupId}`);
+    
+    this.broadcastToGroup(groupId.toString(), broadcastMessage);
   }
 }
 

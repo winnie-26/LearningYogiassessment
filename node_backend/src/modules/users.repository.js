@@ -60,72 +60,19 @@ async function listUsers({ q, limit, offset } = {}) {
   };
 }
 
-// Update user's FCM token
-async function updateFcmToken(userId, fcmToken) {
-  if (!isDbEnabled()) {
-    // For in-memory store, we would update it here
-    // For now, just log it
-    console.log(`[In-Memory] Updating FCM token for user ${userId} to ${fcmToken}`);
-    return { id: userId };
-  }
-  
-  const pool = getPool();
-  const { rows } = await pool.query(
-    'UPDATE users SET fcm_token = $1, updated_at = NOW() WHERE id = $2 RETURNING id',
-    [fcmToken, userId]
-  );
-  return rows[0] || null;
-}
+module.exports = { listUsers };
 
 // Get a single user by ID
 async function getUserById(id) {
   if (!isDbEnabled()) {
-    const user = store.getUserById(id);
-    return user ? { ...user, username: user.email?.split('@')[0] } : null;
+    const all = store.listUsers({});
+    const found = all.find(u => String(u.id) === String(id));
+    if (!found) return null;
+    return { id: found.id, email: found.email };
   }
   const pool = getPool();
-  try {
-    const { rows } = await pool.query(
-      'SELECT id, email, created_at FROM users WHERE id = $1', 
-      [id]
-    );
-    const user = rows[0];
-    
-    if (!user) {
-      console.error(`[Users] User with ID ${id} not found`);
-      return null;
-    }
-    
-    // Ensure email is set, use a fallback if not
-    if (!user.email) {
-      console.warn(`[Users] No email found for user ${id}, using fallback`);
-      user.email = `user${id}@example.com`;
-    }
-    
-    // Set a default username if not present
-    if (!user.username && user.email) {
-      user.username = user.email.split('@')[0];
-    }
-    
-    console.log(`[Users] Retrieved user ${id}:`, { 
-      id: user.id, 
-      email: user.email,
-      username: user.username 
-    });
-    
-    return user;
-  } catch (error) {
-    console.error(`[Users] Error fetching user ${id}:`, error);
-    return null;
-  }
+  const { rows } = await pool.query('SELECT id, email FROM users WHERE id = $1', [id]);
+  return rows[0] || null;
 }
 
-// Alias for compatibility with WebSocket server
-const findById = getUserById;
-
-module.exports = { 
-  listUsers, 
-  updateFcmToken, 
-  getUserById,
-  findById // Add the alias for compatibility
-};
+module.exports.getUserById = getUserById;

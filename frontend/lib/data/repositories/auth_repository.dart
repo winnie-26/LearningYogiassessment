@@ -1,41 +1,22 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_client.dart';
 import '../../core/providers.dart';
-import '../../services/user_service.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   final api = ref.read(apiClientProvider);
   final storage = ref.read(secureStorageProvider);
-  final userService = ref.read(userServiceProvider);
-  return AuthRepository(api, storage, userService);
+  return AuthRepository(api, storage);
 });
 
 class AuthRepository {
-  AuthRepository(this._api, this._storage, this._userService);
+  AuthRepository(this._api, this._storage);
   final ApiClient _api;
   final FlutterSecureStorage _storage;
-  final UserService _userService;
-
-  // Get the current user ID from secure storage
-  Future<String?> get _userId async {
-    return await _storage.read(key: 'userId');
-  }
 
   Future<void> register(String email, String password) async {
-    final response = await _api.register(email, password);
-    // After successful registration, save user ID and update FCM token
-    if (response.data is Map<String, dynamic>) {
-      final data = response.data as Map<String, dynamic>;
-      final userId = data['user_id']?.toString();
-      if (userId != null) {
-        await _storage.write(key: 'userId', value: userId);
-        // Update FCM token for the new user
-        await _updateFcmTokenForUser(userId);
-      }
-    }
+    await _api.register(email, password);
   }
 
   Future<void> login(String email, String password) async {
@@ -54,49 +35,33 @@ class AuthRepository {
     // Support multiple token key shapes
     String? access = (data['access'] ?? data['access_token']) as String?;
     String? refresh = (data['refresh'] ?? data['refresh_token']) as String?;
-    String? userId = data['user_id']?.toString();
-    
     // Sometimes wrapped under `data`
     if ((access == null || refresh == null) && data['data'] is Map<String, dynamic>) {
       final inner = data['data'] as Map<String, dynamic>;
       access ??= (inner['access'] ?? inner['access_token']) as String?;
       refresh ??= (inner['refresh'] ?? inner['refresh_token']) as String?;
-      userId ??= inner['user_id']?.toString();
     }
-    
     if (access != null) {
       await _storage.write(key: 'accessToken', value: access);
     }
     if (refresh != null) {
       await _storage.write(key: 'refreshToken', value: refresh);
     }
-    if (userId != null) {
-      await _storage.write(key: 'userId', value: userId);
-      // Update FCM token for the logged-in user
-      await _updateFcmTokenForUser(userId);
-    } else {
-      // Try to get user ID from other possible locations in the response
-      userId = data['id']?.toString();
-      if (userId == null && data['user'] is Map<String, dynamic>) {
-        final user = data['user'] as Map<String, dynamic>;
+    
+    // Store user ID if available in the response (robust across shapes)
+    String? userId = data['user_id']?.toString() ?? data['id']?.toString();
+    if (userId == null && data['user'] is Map<String, dynamic>) {
+      final user = data['user'] as Map<String, dynamic>;
+      userId = (user['id'] ?? user['user_id'])?.toString();
+    }
+    if (userId == null && data['data'] is Map<String, dynamic>) {
+      final inner = data['data'] as Map<String, dynamic>;
+      userId = inner['user_id']?.toString() ?? inner['id']?.toString();
+      if (userId == null && inner['user'] is Map<String, dynamic>) {
+        final user = inner['user'] as Map<String, dynamic>;
         userId = (user['id'] ?? user['user_id'])?.toString();
       }
-      if (userId == null && data['data'] is Map<String, dynamic>) {
-        final inner = data['data'] as Map<String, dynamic>;
-        userId = inner['user_id']?.toString() ?? inner['id']?.toString();
-        if (userId == null && inner['user'] is Map<String, dynamic>) {
-          final user = inner['user'] as Map<String, dynamic>;
-          userId = (user['id'] ?? user['user_id'])?.toString();
-        }
-      }
-      
-      // If we found the user ID in another location, store it
-      if (userId != null) {
-        await _storage.write(key: 'userId', value: userId);
-        await _updateFcmTokenForUser(userId);
-      }
     }
-    
     // Fallback: decode JWT access token for `sub`/`user_id`/`uid`
     if (userId == null && access != null) {
       try {
@@ -129,39 +94,9 @@ class AuthRepository {
   }
 
   Future<void> logout() async {
-    // Clear FCM token on logout
-    await _clearFcmToken(await _userId);
-    
-    // Clear all stored data
-    await _storage.deleteAll();
-    
-    // Clear shared preferences
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-  }
-  
-  Future<void> _clearFcmToken(String? userId) async {
-    try {
-      if (userId != null) {
-        await _userService.updateFcmToken(userId, '');
-      }
-    } catch (e) {
-      print('Error clearing FCM token: $e');
-    }
-  }
-
-  // Helper method to update FCM token for a user
-  Future<void> _updateFcmTokenForUser(String userId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('fcm_token');
-      
-      if (token != null && token.isNotEmpty) {
-        await _userService.updateFcmToken(userId, token);
-      }
-    } catch (e) {
-      print('Error updating FCM token for user: $e');
-    }
+    await _storage.delete(key: 'accessToken');
+    await _storage.delete(key: 'refreshToken');
+    await _storage.delete(key: 'current_user_id');
   }
 
   Future<void> refresh() async {

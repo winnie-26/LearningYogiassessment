@@ -7,7 +7,4 @@ const router = express.Router();
 // GET /api/v1/users?q=abc&limit=50
 router.get('/', authRequired, ctrl.list);
 
-// POST /api/v1/users/:userId/fcm-token
-router.post('/:userId/fcm-token', authRequired, ctrl.updateFcmToken);
-
 module.exports = router;

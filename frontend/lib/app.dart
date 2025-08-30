@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:frontend/test_notification.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/groups/groups_list_screen.dart';
@@ -130,7 +129,6 @@ class _AppState extends State<App> {
         '/create-group': (_) => const CreateGroupScreen(),
         '/join-requests': (_) => const JoinRequestsScreen(),
         '/chat': (_) => const ChatScreen(),
-        '/test-notifications': (_) => const TestNotificationScreen(),
       },
     );
   }
