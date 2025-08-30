@@ -35,19 +35,29 @@ class NotificationService {
    * @returns {Promise} - Promise that resolves when notification is sent
    */
   async sendToUser(userId, notification, data = {}) {
-    try {
-      // Get the FCM token for the user from your database
-      const user = await db.User.findByPk(userId, {
-        attributes: ['fcmToken']
-      });
+    if (!isInitialized) {
+      console.warn('Firebase not initialized, skipping notification');
+      return null;
+    }
 
-      if (!user || !user.fcmToken) {
+    try {
+      // Get the FCM token for the user from database using raw query
+      const { getPool } = require('../data/db');
+      const pool = getPool();
+      
+      const { rows } = await pool.query(
+        'SELECT fcm_token FROM users WHERE id = $1', 
+        [userId]
+      );
+
+      const user = rows[0];
+      if (!user || !user.fcm_token) {
         console.warn(`No FCM token found for user ${userId}`);
         return null;
       }
 
       const message = {
-        token: user.fcmToken,
+        token: user.fcm_token,
         notification: {
           title: notification.title,
           body: notification.body,
@@ -63,7 +73,8 @@ class NotificationService {
       return response;
     } catch (error) {
       console.error('Error sending notification:', error);
-      throw error;
+      // Don't throw error to prevent breaking message flow
+      return null;
     }
   }
 
@@ -90,19 +101,31 @@ class NotificationService {
    * @param {string} groupName - Name of the group
    */
   async sendGroupInvite(inviterId, inviteeId, groupId, groupName) {
-    const inviter = await db.User.findByPk(inviterId, {
-      attributes: ['username']
-    });
+    try {
+      const { getPool } = require('../data/db');
+      const pool = getPool();
+      
+      const { rows } = await pool.query(
+        'SELECT email FROM users WHERE id = $1', 
+        [inviterId]
+      );
 
-    return this.sendToUser(inviteeId, {
-      title: 'New Group Invitation',
-      body: `${inviter.username} invited you to join ${groupName}`
-    }, {
-      type: 'group_invite',
-      groupId,
-      inviterId,
-      timestamp: new Date().toISOString()
-    });
+      const inviter = rows[0];
+      const inviterName = inviter?.email?.split('@')[0] || 'Someone';
+
+      return this.sendToUser(inviteeId, {
+        title: 'New Group Invitation',
+        body: `${inviterName} invited you to join ${groupName}`
+      }, {
+        type: 'group_invite',
+        groupId,
+        inviterId,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error sending group invite notification:', error);
+      return null;
+    }
   }
 
   /**
@@ -113,19 +136,31 @@ class NotificationService {
    * @param {string} groupName - Name of the group
    */
   async sendRequestAccepted(adminId, userId, groupId, groupName) {
-    const adminUser = await db.User.findByPk(adminId, {
-      attributes: ['username']
-    });
+    try {
+      const { getPool } = require('../data/db');
+      const pool = getPool();
+      
+      const { rows } = await pool.query(
+        'SELECT email FROM users WHERE id = $1', 
+        [adminId]
+      );
 
-    return this.sendToUser(userId, {
-      title: 'Request Accepted',
-      body: `${adminUser.username} accepted your request to join ${groupName}`
-    }, {
-      type: 'request_accepted',
-      groupId,
-      adminId,
-      timestamp: new Date().toISOString()
-    });
+      const adminUser = rows[0];
+      const adminName = adminUser?.email?.split('@')[0] || 'Admin';
+
+      return this.sendToUser(userId, {
+        title: 'Request Accepted',
+        body: `${adminName} accepted your request to join ${groupName}`
+      }, {
+        type: 'request_accepted',
+        groupId,
+        adminId,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error sending request accepted notification:', error);
+      return null;
+    }
   }
 
   /**
@@ -139,23 +174,35 @@ class NotificationService {
   async sendNewMessage(senderId, recipientIds, groupId, groupName, messagePreview) {
     if (recipientIds.length === 0) return [];
     
-    const sender = await db.User.findByPk(senderId, {
-      attributes: ['username']
-    });
+    try {
+      const { getPool } = require('../data/db');
+      const pool = getPool();
+      
+      const { rows } = await pool.query(
+        'SELECT email FROM users WHERE id = $1', 
+        [senderId]
+      );
 
-    const notification = {
-      title: `New message in ${groupName}`,
-      body: `${sender.username}: ${messagePreview.substring(0, 100)}${messagePreview.length > 100 ? '...' : ''}`
-    };
+      const sender = rows[0];
+      const senderName = sender?.email?.split('@')[0] || 'Someone';
 
-    const data = {
-      type: 'new_message',
-      groupId,
-      senderId,
-      timestamp: new Date().toISOString()
-    };
+      const notification = {
+        title: `New message in ${groupName}`,
+        body: `${senderName}: ${messagePreview.substring(0, 100)}${messagePreview.length > 100 ? '...' : ''}`
+      };
 
-    return this.sendToUsers(recipientIds, notification, data);
+      const data = {
+        type: 'new_message',
+        groupId,
+        senderId,
+        timestamp: new Date().toISOString()
+      };
+
+      return this.sendToUsers(recipientIds, notification, data);
+    } catch (error) {
+      console.error('Error sending new message notification:', error);
+      return [];
+    }
   }
 }
 
