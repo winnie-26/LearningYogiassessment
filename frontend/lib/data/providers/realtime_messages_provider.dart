@@ -68,22 +68,27 @@ class CombinedMessagesNotifier extends StateNotifier<AsyncValue<List<Map<String,
       return;
     }
     
-    // The message from the server already has the correct format
-    // Just ensure all required fields are present
+    // Ensure we have a proper sender object
+    final sender = (message['sender'] is Map 
+        ? Map<String, dynamic>.from(message['sender'])
+        : <String, dynamic>{});
+    
+    // Format the message with all required fields
     final formattedMessage = <String, dynamic>{
       'id': message['id'] ?? DateTime.now().millisecondsSinceEpoch,
       'text': message['text'] ?? '',
-      'sender': message['sender'] is Map 
-          ? Map<String, dynamic>.from(message['sender'])
-          : {
-              'id': message['user_id'] ?? 'unknown',
-              'name': 'User${message['user_id'] ?? ''}',
-              'email': 'user${message['user_id'] ?? ''}@example.com',
-            },
-      'group_id': message['group_id'],
-      'user_id': message['user_id'],
+      'sender': {
+        'id': sender['id'] ?? message['user_id'] ?? 'unknown',
+        'username': sender['username'],
+        'name': sender['name'],
+        'email': sender['email'],
+      },
+      'group_id': message['group_id'] ?? message['groupId'],
+      'user_id': message['user_id'] ?? sender['id'],
       'created_at': message['created_at'] ?? DateTime.now().toIso8601String(),
     };
+    
+    print('Formatted realtime message: $formattedMessage'); // Debug log
     
     print('Formatted message: $formattedMessage'); // Debug log
     

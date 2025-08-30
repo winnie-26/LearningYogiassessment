@@ -147,14 +147,21 @@ class WebSocketService {
                 // Ensure the message has required fields and format it consistently
                 final formattedMessage = Map<String, dynamic>.from(message);
                 
-                // Ensure sender is a map
+                // Ensure sender is a map with all required fields
                 if (formattedMessage['sender'] is! Map) {
                   formattedMessage['sender'] = {
-                    'id': formattedMessage['user_id'],
-                    'name': 'User${formattedMessage['user_id']}',
-                    'email': 'user${formattedMessage['user_id']}@example.com',
+                    'id': formattedMessage['user_id'] ?? 'unknown',
+                    'username': null,
+                    'name': null,
+                    'email': null,
                   };
                 }
+                
+                // Ensure we have a valid sender ID
+                formattedMessage['sender']['id'] ??= formattedMessage['user_id'] ?? 'unknown';
+                
+                // Log the formatted message for debugging
+                print('Formatted WebSocket message: $formattedMessage');
                 
                 // Ensure required fields are present
                 formattedMessage['text'] ??= '';
