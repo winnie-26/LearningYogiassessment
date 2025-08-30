@@ -4,25 +4,20 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api_client.dart';
 import '../../core/providers.dart';
-import '../../services/user_service.dart';
+import '../../features/notifications/fcm_service.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   final api = ref.read(apiClientProvider);
   final storage = ref.read(secureStorageProvider);
-  final userService = ref.read(userServiceProvider);
-  return AuthRepository(api, storage, userService);
+  return AuthRepository(api, storage, ref.container);
 });
 
 class AuthRepository {
-  AuthRepository(this._api, this._storage, this._userService);
+  AuthRepository(this._api, this._storage, this._container);
   final ApiClient _api;
   final FlutterSecureStorage _storage;
-  final UserService _userService;
+  final ProviderContainer _container;
 
-  // Get the current user ID from secure storage
-  Future<String?> get _userId async {
-    return await _storage.read(key: 'userId');
-  }
 
   Future<void> register(String email, String password) async {
     final response = await _api.register(email, password);
@@ -32,8 +27,8 @@ class AuthRepository {
       final userId = data['user_id']?.toString();
       if (userId != null) {
         await _storage.write(key: 'userId', value: userId);
-        // Update FCM token for the new user
-        await _updateFcmTokenForUser(userId);
+        // Register FCM token for the new user
+        await FcmService.registerToken(_container);
       }
     }
   }
@@ -72,8 +67,8 @@ class AuthRepository {
     }
     if (userId != null) {
       await _storage.write(key: 'userId', value: userId);
-      // Update FCM token for the logged-in user
-      await _updateFcmTokenForUser(userId);
+      // Register FCM token for the logged-in user
+      await FcmService.registerToken(_container);
     } else {
       // Try to get user ID from other possible locations in the response
       userId = data['id']?.toString();
@@ -93,7 +88,7 @@ class AuthRepository {
       // If we found the user ID in another location, store it
       if (userId != null) {
         await _storage.write(key: 'userId', value: userId);
-        await _updateFcmTokenForUser(userId);
+        await FcmService.registerToken(_container);
       }
     }
     
@@ -117,6 +112,9 @@ class AuthRepository {
       print('Storing user ID in secure storage');
       await _storage.write(key: 'current_user_id', value: userId);
       
+      // Register FCM token after successful login
+      await FcmService.registerToken(_container);
+      
       // Verify the ID was stored
       final storedId = await _storage.read(key: 'current_user_id');
       print('Stored user ID verification: $storedId');
@@ -129,8 +127,8 @@ class AuthRepository {
   }
 
   Future<void> logout() async {
-    // Clear FCM token on logout
-    await _clearFcmToken(await _userId);
+    // Remove FCM token from backend on logout
+    await FcmService.removeToken(_container);
     
     // Clear all stored data
     await _storage.deleteAll();
@@ -138,30 +136,6 @@ class AuthRepository {
     // Clear shared preferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
-  }
-  
-  Future<void> _clearFcmToken(String? userId) async {
-    try {
-      if (userId != null) {
-        await _userService.updateFcmToken(userId, '');
-      }
-    } catch (e) {
-      print('Error clearing FCM token: $e');
-    }
-  }
-
-  // Helper method to update FCM token for a user
-  Future<void> _updateFcmTokenForUser(String userId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('fcm_token');
-      
-      if (token != null && token.isNotEmpty) {
-        await _userService.updateFcmToken(userId, token);
-      }
-    } catch (e) {
-      print('Error updating FCM token for user: $e');
-    }
   }
 
   Future<void> refresh() async {

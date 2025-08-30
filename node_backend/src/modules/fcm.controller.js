@@ -49,5 +49,5 @@ async function removeToken(req, res) {
 
 module.exports = {
   updateToken,
-  removeToken
+  removeToken,
 };

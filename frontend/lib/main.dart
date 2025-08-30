@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/app.dart';
 import 'package:frontend/services/notification_service.dart';
+import 'package:frontend/features/notifications/fcm_service.dart';
 
 // Global navigator key for notifications
 final GlobalKey<NavigatorState> navigatorKey = NotificationService.navigatorKey;
@@ -10,8 +11,9 @@ final GlobalKey<NavigatorState> navigatorKey = NotificationService.navigatorKey;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Firebase
+  // Initialize Firebase and FCM
   await Firebase.initializeApp();
+  await FcmService.init();
   
   // Initialize notifications (handled by the NotificationService constructor)
   

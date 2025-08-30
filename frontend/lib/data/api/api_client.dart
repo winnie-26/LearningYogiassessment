@@ -106,4 +106,10 @@ class ApiClient {
         if (limit != null) 'limit': limit,
         if (offset != null) 'offset': offset,
       });
+
+  // FCM Token Management
+  Future<Response> updateFcmToken(String token) => _dio.put('/api/v1/fcm/token', data: {
+        'fcm_token': token,
+      });
+  Future<Response> removeFcmToken() => _dio.delete('/api/v1/fcm/token');
 }
