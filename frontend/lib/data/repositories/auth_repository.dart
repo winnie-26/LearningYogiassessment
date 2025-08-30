@@ -28,7 +28,12 @@ class AuthRepository {
       if (userId != null) {
         await _storage.write(key: 'userId', value: userId);
         // Register FCM token for the new user
-        await FcmService.registerToken(_container);
+        try {
+          final fcmResult = await FcmService.registerToken(_container);
+          print('[AuthRepository] FCM token registration result: $fcmResult');
+        } catch (error) {
+          print('[AuthRepository] FCM token registration error: $error');
+        }
       }
     }
   }
@@ -68,7 +73,12 @@ class AuthRepository {
     if (userId != null) {
       await _storage.write(key: 'userId', value: userId);
       // Register FCM token for the logged-in user
-      await FcmService.registerToken(_container);
+      try {
+        final fcmResult = await FcmService.registerToken(_container);
+        print('[AuthRepository] Login FCM token registration result: $fcmResult');
+      } catch (error) {
+        print('[AuthRepository] Login FCM token registration error: $error');
+      }
     } else {
       // Try to get user ID from other possible locations in the response
       userId = data['id']?.toString();
@@ -88,7 +98,12 @@ class AuthRepository {
       // If we found the user ID in another location, store it
       if (userId != null) {
         await _storage.write(key: 'userId', value: userId);
-        await FcmService.registerToken(_container);
+        try {
+          final fcmResult = await FcmService.registerToken(_container);
+          print('[AuthRepository] Fallback FCM token registration result: $fcmResult');
+        } catch (error) {
+          print('[AuthRepository] Fallback FCM token registration error: $error');
+        }
       }
     }
     
@@ -113,7 +128,12 @@ class AuthRepository {
       await _storage.write(key: 'current_user_id', value: userId);
       
       // Register FCM token after successful login
-      await FcmService.registerToken(_container);
+      try {
+        final fcmResult = await FcmService.registerToken(_container);
+        print('[AuthRepository] JWT FCM token registration result: $fcmResult');
+      } catch (error) {
+        print('[AuthRepository] JWT FCM token registration error: $error');
+      }
       
       // Verify the ID was stored
       final storedId = await _storage.read(key: 'current_user_id');

@@ -48,31 +48,45 @@ class FcmService {
   /// Register FCM token with backend
   static Future<bool> registerToken(ProviderContainer container) async {
     try {
+      print('[FCM] Starting token registration process...');
+      
       if (_messaging == null) {
-        print('[FCM] Messaging not initialized');
+        print('[FCM] ERROR: Messaging not initialized');
         return false;
       }
 
       final token = await _messaging!.getToken();
       if (token == null) {
-        print('[FCM] No token available');
+        print('[FCM] ERROR: No token available from Firebase');
         return false;
       }
 
-      print('[FCM] Registering token: ${token.substring(0, 20)}...');
+      print('[FCM] Got FCM token: ${token.substring(0, 20)}...');
 
-      final apiClient = container.read(apiClientProvider);
-      final response = await apiClient.updateFcmToken(token);
+      try {
+        final apiClient = container.read(apiClientProvider);
+        print('[FCM] API client obtained, making request...');
+        
+        final response = await apiClient.updateFcmToken(token);
+        print('[FCM] API response status: ${response.statusCode}');
+        print('[FCM] API response data: ${response.data}');
 
-      if (response.statusCode == 200) {
-        print('[FCM] Token registered successfully');
-        return true;
-      } else {
-        print('[FCM] Token registration failed: ${response.statusCode}');
+        if (response.statusCode == 200) {
+          print('[FCM] ✓ Token registered successfully');
+          return true;
+        } else {
+          print('[FCM] ✗ Token registration failed: ${response.statusCode}');
+          print('[FCM] Response body: ${response.data}');
+          return false;
+        }
+      } catch (apiError) {
+        print('[FCM] API call error: $apiError');
+        print('[FCM] API error type: ${apiError.runtimeType}');
         return false;
       }
     } catch (error) {
-      print('[FCM] Token registration error: $error');
+      print('[FCM] General token registration error: $error');
+      print('[FCM] Error type: ${error.runtimeType}');
       return false;
     }
   }
