@@ -50,6 +50,7 @@ async function send(groupId, userId, text) {
         const messagePreview = text.length > 100 ? text.substring(0, 100) + '...' : text;
         
         // Send notifications in the background (don't await)
+        console.log(`[MessagesService] Sending notifications to ${recipientIds.length} recipients:`, recipientIds);
         notificationService.sendNewMessage(
           userId,
           recipientIds,

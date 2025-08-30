@@ -28,33 +28,38 @@ class NotificationService {
   }
 
   /**
-   * Send a notification to a specific user
-   * @param {string} userId - The ID of the user to notify
-   * @param {Object} notification - Notification content
+   * Send notification to a single user
+   * @param {string} userId - User ID to send notification to
+   * @param {Object} notification - Notification content with title and body
    * @param {Object} data - Additional data payload
-   * @returns {Promise} - Promise that resolves when notification is sent
    */
   async sendToUser(userId, notification, data = {}) {
-    if (!isInitialized) {
-      console.warn('Firebase not initialized, skipping notification');
+    console.log(`[NotificationService] Attempting to send notification to user ${userId}`);
+    
+    if (!this.messaging) {
+      console.warn('[NotificationService] Firebase messaging not initialized');
       return null;
     }
 
     try {
-      // Get the FCM token for the user from database using raw query
       const { getPool } = require('../data/db');
       const pool = getPool();
       
+      console.log(`[NotificationService] Querying FCM token for user ${userId}`);
       const { rows } = await pool.query(
         'SELECT fcm_token FROM users WHERE id = $1', 
         [userId]
       );
 
       const user = rows[0];
+      console.log(`[NotificationService] FCM token query result:`, user ? 'User found' : 'User not found');
+      
       if (!user || !user.fcm_token) {
-        console.warn(`No FCM token found for user ${userId}`);
+        console.warn(`[NotificationService] No FCM token found for user ${userId}. Token exists: ${!!user?.fcm_token}`);
         return null;
       }
+
+      console.log(`[NotificationService] FCM token found for user ${userId}: ${user.fcm_token.substring(0, 20)}...`);
 
       const message = {
         token: user.fcm_token,
@@ -68,11 +73,17 @@ class NotificationService {
         },
       };
 
+      console.log(`[NotificationService] Sending Firebase message:`, {
+        title: notification.title,
+        body: notification.body,
+        tokenPrefix: user.fcm_token.substring(0, 20)
+      });
+
       const response = await this.messaging.send(message);
-      console.log('Successfully sent notification:', response);
+      console.log('[NotificationService] Successfully sent notification:', response);
       return response;
     } catch (error) {
-      console.error('Error sending notification:', error);
+      console.error('[NotificationService] Error sending notification:', error);
       // Don't throw error to prevent breaking message flow
       return null;
     }
@@ -172,7 +183,12 @@ class NotificationService {
    * @param {string} messagePreview - Preview of the message
    */
   async sendNewMessage(senderId, recipientIds, groupId, groupName, messagePreview) {
-    if (recipientIds.length === 0) return [];
+    console.log(`[NotificationService] sendNewMessage called - sender: ${senderId}, recipients: ${recipientIds.length}, group: ${groupId}`);
+    
+    if (recipientIds.length === 0) {
+      console.log('[NotificationService] No recipients to notify');
+      return [];
+    }
     
     try {
       const { getPool } = require('../data/db');

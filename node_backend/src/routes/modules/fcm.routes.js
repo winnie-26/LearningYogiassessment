@@ -17,6 +17,7 @@ router.put('/token', authRequired, async (req, res) => {
     }
 
     await fcmService.updateToken(userId, fcm_token);
+    console.log(`[FCM Routes] FCM token updated for user ${userId}: ${fcm_token.substring(0, 20)}...`);
 
     res.status(StatusCodes.OK).json({
       message: 'FCM token updated successfully'
