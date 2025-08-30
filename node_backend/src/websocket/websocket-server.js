@@ -79,14 +79,16 @@ class WebSocketServer {
   }
 
   async handleAuth(ws, message) {
-    console.log('[WebSocket] Handling auth message:', message);
+    console.log('[WebSocket] ===== HANDLING AUTH =====');
+    console.log('[WebSocket] Auth message:', JSON.stringify(message, null, 2));
     const { token, groupId } = message;
-
+    
     if (!token) {
-      const error = 'Token required';
+      const error = 'No token provided';
       console.error(`[WebSocket] ${error}`);
       this.sendError(ws, error);
-      return ws.close(StatusCodes.UNAUTHORIZED);
+      ws.close(StatusCodes.UNAUTHORIZED);
+      return;
     }
 
     try {
@@ -100,14 +102,23 @@ class WebSocketServer {
         decoded = jwt.verify(token, process.env.JWT_SECRET);
       }
       
-      ws.userId = decoded.sub || decoded.user_id || decoded.id;
-      ws.groupId = groupId;
+      const userId = decoded.sub || decoded.user_id || decoded.id;
+      const groupIdNum = parseInt(groupId);
+      
+      ws.userId = userId;
+      ws.groupId = groupIdNum;
+
+      console.log(`[WebSocket] Parsed userId: ${userId}, groupId: ${groupIdNum}`);
 
       // Add to group connections
-      if (!this.groupConnections.has(groupId)) {
-        this.groupConnections.set(groupId, new Set());
+      if (!this.groupConnections.has(groupIdNum)) {
+        console.log(`[WebSocket] Creating new group connection set for group ${groupIdNum}`);
+        this.groupConnections.set(groupIdNum, new Set());
       }
-      this.groupConnections.get(groupId).add(ws);
+      this.groupConnections.get(groupIdNum).add(ws);
+
+      console.log(`[WebSocket] Group ${groupIdNum} now has ${this.groupConnections.get(groupIdNum).size} connections`);
+      console.log(`[WebSocket] All active groups:`, Array.from(this.groupConnections.keys()));
 
       this.sendMessage(ws, { 
         type: 'auth_success', 
@@ -115,7 +126,8 @@ class WebSocketServer {
         groupId: ws.groupId
       });
 
-      console.log(`[WebSocket] User ${ws.userId} authenticated for group ${groupId}`);
+      console.log(`[WebSocket] User ${userId} authenticated for group ${groupIdNum}`);
+      console.log('[WebSocket] ===== AUTH COMPLETE =====');
     } catch (error) {
       console.error('[WebSocket] Auth error:', error);
       this.sendError(ws, 'Invalid token');
@@ -124,8 +136,12 @@ class WebSocketServer {
   }
 
   async handleJoinGroup(ws, message) {
-    console.log('[WebSocket] Handling join group:', message);
+    console.log('[WebSocket] ===== HANDLING JOIN GROUP =====');
+    console.log('[WebSocket] Message:', JSON.stringify(message, null, 2));
+    console.log('[WebSocket] User ID:', ws.userId);
+    
     const { groupId } = message;
+    const groupIdNum = parseInt(groupId);
     
     if (!ws.userId) {
       const error = 'Not authenticated';
@@ -134,17 +150,24 @@ class WebSocketServer {
       return;
     }
 
+    console.log(`[WebSocket] User ${ws.userId} joining group ${groupIdNum}`);
+
     // Remove from previous group if any
     if (ws.groupId && this.groupConnections.has(ws.groupId)) {
+      console.log(`[WebSocket] Removing user ${ws.userId} from previous group ${ws.groupId}`);
       this.groupConnections.get(ws.groupId).delete(ws);
     }
 
     // Add to new group
-    ws.groupId = groupId;
-    if (!this.groupConnections.has(groupId)) {
-      this.groupConnections.set(groupId, new Set());
+    ws.groupId = groupIdNum;
+    if (!this.groupConnections.has(groupIdNum)) {
+      console.log(`[WebSocket] Creating new group connection set for group ${groupIdNum}`);
+      this.groupConnections.set(groupIdNum, new Set());
     }
-    this.groupConnections.get(groupId).add(ws);
+    this.groupConnections.get(groupIdNum).add(ws);
+    
+    console.log(`[WebSocket] Group ${groupIdNum} now has ${this.groupConnections.get(groupIdNum).size} connections`);
+    console.log(`[WebSocket] All active groups:`, Array.from(this.groupConnections.keys()));
 
     this.sendMessage(ws, { 
       type: 'joined_group', 
@@ -153,7 +176,7 @@ class WebSocketServer {
 
     console.log(`[WebSocket] User ${ws.userId} joined group ${groupId}`);
   }
-
+ 
   async handleChatMessage(ws, message) {
     const { text, group_id, sender_id } = message;
     const userId = sender_id || ws.userId;

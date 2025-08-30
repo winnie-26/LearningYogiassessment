@@ -86,7 +86,7 @@ async function getUserById(id) {
   const pool = getPool();
   try {
     const { rows } = await pool.query(
-      'SELECT id, email, name, username, fcm_token FROM users WHERE id = $1', 
+      'SELECT id, email, created_at FROM users WHERE id = $1', 
       [id]
     );
     const user = rows[0];
