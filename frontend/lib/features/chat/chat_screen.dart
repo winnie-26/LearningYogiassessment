@@ -404,9 +404,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         final isCurrentUser = currentSenderIdStr != null && currentSenderIdStr.trim() == normalizedCurrentUserId;
                         
                         // Extract sender name from message
-                        final senderName = message['sender'] is Map 
-                            ? (message['sender']['name'] ?? 'User${message['sender']['id'] ?? ''}') 
-                            : 'User$currentSenderIdStr';
+                        final senderName = (() {
+                          if (message['sender'] is Map) {
+                            final sender = message['sender'] as Map<String, dynamic>;
+                            
+                            // Get the email or default to empty string
+                            final email = sender['email']?.toString() ?? '';
+                            
+                            // Extract username from email (part before @) or use user ID
+                            if (email.isNotEmpty) {
+                              return email.split('@')[0];
+                            }
+                            
+                            // Fallback to username, name, or user ID
+                            return sender['username'] ?? 
+                                   sender['name'] ?? 
+                                   'User${sender['id'] ?? currentSenderIdStr}';
+                          }
+                          return 'User$currentSenderIdStr';
+                        })();
+                        
+                        print('Displaying message from: $senderName'); // Debug log
                         
                         // Generate different shades for different users
                         final senderHash = currentSenderIdStr?.hashCode ?? 0;

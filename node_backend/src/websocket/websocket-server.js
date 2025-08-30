@@ -174,6 +174,9 @@ class WebSocketServer {
         return;
       }
 
+      // Get the username from email (part before @)
+      const emailPrefix = user.email ? user.email.split('@')[0] : `User${userId}`;
+      
       // Create message object to broadcast with proper format matching API response
       const broadcastMessage = {
         type: 'new_message',
@@ -181,10 +184,10 @@ class WebSocketServer {
         text: text || '',
         sender: {
           id: user.id || userId,
-          // Use username if available, otherwise use the first part of the email
-          name: user.username || (user.email ? user.email.split('@')[0] : `User${userId}`),
+          // Use email prefix as the display name
+          name: emailPrefix,
           email: user.email || `user${userId}@example.com`,
-          username: user.username || null
+          username: emailPrefix
         },
         group_id: group_id || ws.groupId,
         user_id: userId,
