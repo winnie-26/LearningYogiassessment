@@ -380,10 +380,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           itemCount: messages.length,
                           itemBuilder: (context, index) {
                         final message = messages[index];
-                        final senderMap = message['sender'];
-                        final senderName = senderMap?['name']?.toString() ?? 'Unknown';
+                        final senderMap = message['sender'] is Map ? Map<String, dynamic>.from(message['sender'] as Map) : null;
                         final currentSenderIdStr = (() {
-                          if (senderMap is Map) {
+                          if (senderMap != null) {
                             final raw = senderMap['id'] ?? senderMap['user_id'] ?? senderMap['uid'];
                             if (raw != null) return raw.toString();
                           }
@@ -403,6 +402,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         final showSenderName = index == 0 || (currentSenderIdStr ?? '') != (prevSenderIdStr ?? '');
                         final messageText = message['text']?.toString() ?? '';
                         final isCurrentUser = currentSenderIdStr != null && currentSenderIdStr.trim() == normalizedCurrentUserId;
+                        
+                        // Extract sender name from message
+                        final senderName = (() {
+                          if (message['sender'] is Map) {
+                            final sender = message['sender'] as Map<String, dynamic>;
+                            
+                            // Get the email or default to empty string
+                            final email = sender['email']?.toString() ?? '';
+                            
+                            // Extract username from email (part before @) or use user ID
+                            if (email.isNotEmpty) {
+                              return email.split('@')[0];
+                            }
+                            
+                            // Fallback to username, name, or user ID
+                            return sender['username'] ?? 
+                                   sender['name'] ?? 
+                                   'User${sender['id'] ?? currentSenderIdStr}';
+                          }
+                          return 'User$currentSenderIdStr';
+                        })();
+                        
+                        print('Displaying message from: $senderName'); // Debug log
                         
                         // Generate different shades for different users
                         final senderHash = currentSenderIdStr?.hashCode ?? 0;

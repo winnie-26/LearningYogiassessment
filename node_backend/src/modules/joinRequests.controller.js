@@ -19,7 +19,11 @@ async function create(req, res, next) {
 
 async function approve(req, res, next) {
   try {
-    const jr = await svc.approve(req.params.id, req.params.reqId);
+    const adminId = req.user?.sub;
+    if (!adminId) {
+      return res.status(401).json({ code: 'unauthorized', message: 'Login required' });
+    }
+    const jr = await svc.approve(req.params.id, req.params.reqId, adminId);
     res.json(jr);
   } catch (e) { next(e); }
 }

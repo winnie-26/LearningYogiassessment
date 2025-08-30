@@ -1,5 +1,8 @@
 const repo = require('./groupInvites.repository');
 const { isDbEnabled } = require('../data/db');
+const notificationService = require('../services/notification.service');
+const groupsRepo = require('./groups.repository');
+const usersRepo = require('./users.repository');
 
 class InviteError extends Error {
   constructor(message, code, status = 400) {
@@ -32,7 +35,29 @@ async function createInvite(groupId, userId, inviterId) {
   }
 
   // Create new invite
-  return repo.createInvite(groupId, userId, inviterId);
+  const invite = await repo.createInvite(groupId, userId, inviterId);
+  
+  // Send notification to the invited user
+  try {
+    const [group, inviter] = await Promise.all([
+      groupsRepo.getGroupById(groupId),
+      usersRepo.getUserById(inviterId)
+    ]);
+    
+    if (group && group.rows.length > 0 && inviter && inviter.rows.length > 0) {
+      await notificationService.sendGroupInvite(
+        inviterId,
+        userId,
+        groupId,
+        group.rows[0].name
+      );
+    }
+  } catch (error) {
+    console.error('Error sending group invite notification:', error);
+    // Don't fail the request if notification fails
+  }
+  
+  return invite;
 }
 
 async function getInvite(inviteId) {
