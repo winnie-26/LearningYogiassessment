@@ -181,7 +181,8 @@ class WebSocketServer {
         text: text || '',
         sender: {
           id: user.id || userId,
-          name: user.name || `User${userId}`, // Use actual name if available
+          // Use username if available, otherwise use the first part of the email
+          name: user.username || (user.email ? user.email.split('@')[0] : `User${userId}`),
           email: user.email || `user${userId}@example.com`,
           username: user.username || null
         },
@@ -189,6 +190,8 @@ class WebSocketServer {
         user_id: userId,
         created_at: new Date().toISOString()
       };
+      
+      console.log('Broadcasting message with sender:', broadcastMessage.sender);
 
       // Broadcast to all clients in the group
       this.broadcastToGroup(ws.groupId, broadcastMessage);
