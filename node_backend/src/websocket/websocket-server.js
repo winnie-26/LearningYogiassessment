@@ -166,6 +166,7 @@ class WebSocketServer {
     try {
       // Get user details from the database
       const userRepo = require('../modules/users.repository');
+      console.log(`[WebSocket] Fetching user with ID: ${userId}`);
       const user = await userRepo.findById(userId);
       
       if (!user) {
@@ -173,9 +174,16 @@ class WebSocketServer {
         this.sendError(ws, 'User not found');
         return;
       }
+      
+      console.log(`[WebSocket] Found user:`, user); // Log the user object
 
-      // Get the username from email (part before @)
-      const emailPrefix = user.email ? user.email.split('@')[0] : `User${userId}`;
+      // Get the username from email or use a fallback
+      let email = user.email;
+      if (!email) {
+        console.warn(`[WebSocket] No email found for user ${userId}, using fallback`);
+        email = `user${userId}@example.com`;
+      }
+      const emailPrefix = email.split('@')[0];
       
       // Create message object to broadcast with proper format matching API response
       const broadcastMessage = {
@@ -186,7 +194,7 @@ class WebSocketServer {
           id: user.id || userId,
           // Use email prefix as the display name
           name: emailPrefix,
-          email: user.email || `user${userId}@example.com`,
+          email: email,
           username: emailPrefix
         },
         group_id: group_id || ws.groupId,
