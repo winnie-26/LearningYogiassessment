@@ -80,11 +80,23 @@ async function updateFcmToken(userId, fcmToken) {
 // Get a single user by ID
 async function getUserById(id) {
   if (!isDbEnabled()) {
-    return store.getUserById(id);
+    const user = store.getUserById(id);
+    return user ? { ...user, username: user.email?.split('@')[0] } : null;
   }
   const pool = getPool();
-  const { rows } = await pool.query('SELECT id, email, fcm_token FROM users WHERE id = $1', [id]);
+  const { rows } = await pool.query(
+    'SELECT id, email, name, username, fcm_token FROM users WHERE id = $1', 
+    [id]
+  );
   return rows[0] || null;
 }
 
-module.exports = { listUsers, updateFcmToken, getUserById };
+// Alias for compatibility with WebSocket server
+const findById = getUserById;
+
+module.exports = { 
+  listUsers, 
+  updateFcmToken, 
+  getUserById,
+  findById // Add the alias for compatibility
+};

@@ -156,31 +156,47 @@ class WebSocketServer {
 
   async handleChatMessage(ws, message) {
     const { text, group_id, sender_id } = message;
+    const userId = sender_id || ws.userId;
 
     if (!ws.userId || !ws.groupId) {
       this.sendError(ws, 'Not authenticated or not in a group');
       return;
     }
 
-    // Create message object to broadcast with proper format matching API response
-    const broadcastMessage = {
-      type: 'new_message',
-      id: Date.now(), // Simple ID generation
-      text: text || '',
-      sender: {
-        id: sender_id || ws.userId,
-        name: `User${sender_id || ws.userId}`, // Generate a name based on user ID
-        email: `user${sender_id || ws.userId}@example.com`
-      },
-      group_id: group_id || ws.groupId,
-      user_id: sender_id || ws.userId,
-      created_at: new Date().toISOString()
-    };
+    try {
+      // Get user details from the database
+      const userRepo = require('../modules/users.repository');
+      const user = await userRepo.findById(userId);
+      
+      if (!user) {
+        console.error(`[WebSocket] User ${userId} not found`);
+        this.sendError(ws, 'User not found');
+        return;
+      }
 
-    // Broadcast to all clients in the group
-    this.broadcastToGroup(ws.groupId, broadcastMessage);
+      // Create message object to broadcast with proper format matching API response
+      const broadcastMessage = {
+        type: 'new_message',
+        id: Date.now(), // Simple ID generation
+        text: text || '',
+        sender: {
+          id: user.id || userId,
+          name: user.name || `User${userId}`, // Use actual name if available
+          email: user.email || `user${userId}@example.com`,
+          username: user.username || null
+        },
+        group_id: group_id || ws.groupId,
+        user_id: userId,
+        created_at: new Date().toISOString()
+      };
 
-    console.log(`[WebSocket] Message broadcasted to group ${ws.groupId}`);
+      // Broadcast to all clients in the group
+      this.broadcastToGroup(ws.groupId, broadcastMessage);
+      console.log(`[WebSocket] Message broadcasted to group ${ws.groupId}`);
+    } catch (error) {
+      console.error('[WebSocket] Error handling chat message:', error);
+      this.sendError(ws, 'Error processing message');
+    }
   }
 
   handleDisconnection(ws) {
