@@ -1,0 +1,292 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+		"name": "Learning Yogi API",
+		"description": "Complete API collection for Learning Yogi Assessment - Real-time group messaging with Firebase push notifications",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"securepassword123\"\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "register"]},
+						"description": "Register a new user account"
+					}
+				},
+				{
+					"name": "Login User",
+					"event": [{"listen": "test", "script": {"exec": ["if (pm.response.code === 200) {", "    const response = pm.response.json();", "    pm.environment.set('accessToken', response.access_token);", "    pm.environment.set('refreshToken', response.refresh_token);", "    pm.environment.set('userId', response.user.id);", "}"], "type": "text/javascript"}}],
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"securepassword123\"\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "login"]},
+						"description": "Login with existing credentials"
+					}
+				},
+				{
+					"name": "Refresh Token",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/auth/refresh", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "refresh"]},
+						"description": "Refresh access token"
+					}
+				}
+			]
+		},
+		{
+			"name": "Groups",
+			"item": [
+				{
+					"name": "List Groups",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups?limit=50", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups"], "query": [{"key": "limit", "value": "50"}]}
+					}
+				},
+				{
+					"name": "Create Group",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}, {"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"name\": \"My Group\",\n  \"description\": \"Group description\",\n  \"isPrivate\": false\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/groups", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups"]}
+					}
+				},
+				{
+					"name": "Check Can Join Group",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/can-join", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "can-join"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Join Group",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/join", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "join"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Leave Group",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/leave", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "leave"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Transfer Group Ownership",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}, {"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"newOwnerId\": 2\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/transfer-owner", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "transfer-owner"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Remove Group Member",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/members/:userId", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "members", ":userId"], "variable": [{"key": "groupId", "value": "1"}, {"key": "userId", "value": "2"}]}
+					}
+				},
+				{
+					"name": "Update Group",
+					"request": {
+						"method": "PATCH",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}, {"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"name\": \"Updated Group Name\",\n  \"description\": \"Updated description\"\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Delete Group",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				}
+			]
+		},
+		{
+			"name": "Messages",
+			"item": [
+				{
+					"name": "Send Message",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}, {"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"content\": \"Hello, everyone!\"\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/messages", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "messages"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Get Group Messages",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/messages?limit=50&offset=0", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "messages"], "query": [{"key": "limit", "value": "50"}, {"key": "offset", "value": "0"}], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Delete Message",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/messages/:messageId", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "messages", ":messageId"], "variable": [{"key": "groupId", "value": "1"}, {"key": "messageId", "value": "1"}]}
+					}
+				}
+			]
+		},
+		{
+			"name": "Join Requests",
+			"item": [
+				{
+					"name": "List Join Requests",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/join-requests", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "join-requests"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Create Join Request",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}, {"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"message\": \"I would like to join this group\"\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/join-requests", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "join-requests"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Approve Join Request",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/join-requests/:reqId/approve", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "join-requests", ":reqId", "approve"], "variable": [{"key": "groupId", "value": "1"}, {"key": "reqId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Decline Join Request",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/join-requests/:reqId/decline", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "join-requests", ":reqId", "decline"], "variable": [{"key": "groupId", "value": "1"}, {"key": "reqId", "value": "1"}]}
+					}
+				}
+			]
+		},
+		{
+			"name": "Group Invites",
+			"item": [
+				{
+					"name": "Create Group Invite",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}, {"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"inviteeEmail\": \"friend@example.com\",\n  \"message\": \"Join our group!\"\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/invites", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "invites"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "List Group Invites",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/invites", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "invites"], "variable": [{"key": "groupId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Get Specific Invite",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/invites/:inviteId", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "invites", ":inviteId"], "variable": [{"key": "groupId", "value": "1"}, {"key": "inviteId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Respond to Invite",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}, {"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"response\": \"accept\"\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/invites/:inviteId/respond", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "invites", ":inviteId", "respond"], "variable": [{"key": "groupId", "value": "1"}, {"key": "inviteId", "value": "1"}]}
+					}
+				},
+				{
+					"name": "Revoke Invite",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/groups/:groupId/invites/:inviteId", "host": ["{{baseUrl}}"], "path": ["api", "v1", "groups", ":groupId", "invites", ":inviteId"], "variable": [{"key": "groupId", "value": "1"}, {"key": "inviteId", "value": "1"}]}
+					}
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "Search Users",
+					"request": {
+						"method": "GET",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/users?q=john&limit=50", "host": ["{{baseUrl}}"], "path": ["api", "v1", "users"], "query": [{"key": "q", "value": "john"}, {"key": "limit", "value": "50"}]}
+					}
+				},
+				{
+					"name": "Update User FCM Token (Legacy)",
+					"request": {
+						"method": "POST",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}, {"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"fcm_token\": \"fcm_token_string_here\"\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/users/:userId/fcm-token", "host": ["{{baseUrl}}"], "path": ["api", "v1", "users", ":userId", "fcm-token"], "variable": [{"key": "userId", "value": "{{userId}}"}]}
+					}
+				}
+			]
+		},
+		{
+			"name": "FCM (Firebase Cloud Messaging)",
+			"item": [
+				{
+					"name": "Register FCM Token",
+					"request": {
+						"method": "PUT",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}, {"key": "Content-Type", "value": "application/json"}],
+						"body": {"mode": "raw", "raw": "{\n  \"fcm_token\": \"fcm_device_token_from_firebase_messaging\"\n}"},
+						"url": {"raw": "{{baseUrl}}/api/v1/fcm/token", "host": ["{{baseUrl}}"], "path": ["api", "v1", "fcm", "token"]}
+					}
+				},
+				{
+					"name": "Remove FCM Token",
+					"request": {
+						"method": "DELETE",
+						"header": [{"key": "Authorization", "value": "Bearer {{accessToken}}"}],
+						"url": {"raw": "{{baseUrl}}/api/v1/fcm/token", "host": ["{{baseUrl}}"], "path": ["api", "v1", "fcm", "token"]}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string"
+		}
+	]
+}
