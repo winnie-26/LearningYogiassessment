@@ -286,27 +286,37 @@ class WebSocketServer {
 
   // Broadcast new message from API to WebSocket clients
   broadcastNewMessage(groupId, message) {
-    const groupConnections = this.groupConnections.get(parseInt(groupId));
+    console.log('[WebSocket] ===== START: broadcastNewMessage =====');
+    console.log(`[WebSocket] Group ID: ${groupId}`);
+    console.log(`[WebSocket] Incoming message:`, JSON.stringify(message, null, 2));
+    
+    const groupIdNum = parseInt(groupId);
+    const groupConnections = this.groupConnections.get(groupIdNum);
+    
     if (!groupConnections) {
-      console.log(`[WebSocket] No connections found for group ${groupId}`);
+      console.error(`[WebSocket] No connections found for group ${groupId}`);
+      console.error(`[WebSocket] Available groups:`, Array.from(this.groupConnections.keys()));
+      console.log('[WebSocket] ===== END: broadcastNewMessage =====');
       return;
     }
 
-    // Ensure the message has the correct format for frontend
+    // Ensure the message has the correct format for frontend with real email-based usernames
     const messageToSend = {
       type: 'new_message',
       id: message.id || Date.now(),
       text: message.text || '',
-      group_id: groupId,
+      group_id: groupIdNum,
       user_id: message.user_id || message.sender?.id,
       created_at: message.created_at || new Date().toISOString(),
       sender: {
         id: message.sender?.id || message.user_id,
-        name: message.sender?.name || `user_${message.user_id || 'unknown'}`,
-        email: message.sender?.email || `user_${message.user_id || 'unknown'}@example.com`,
-        username: message.sender?.username || (message.sender?.email ? message.sender.email.split('@')[0] : `user_${message.user_id || 'unknown'}`)
+        name: message.sender?.name || message.sender?.email?.split('@')[0] || 'Unknown',
+        email: message.sender?.email || 'unknown@example.com',
+        username: message.sender?.username || message.sender?.email?.split('@')[0] || 'unknown'
       }
     };
+    
+    console.log('[WebSocket] Formatted message to send:', JSON.stringify(messageToSend, null, 2));
 
     console.log('[WebSocket] Broadcasting message:', messageToSend);
     const messageString = JSON.stringify(messageToSend);

@@ -403,23 +403,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         final messageText = message['text']?.toString() ?? '';
                         final isCurrentUser = currentSenderIdStr != null && currentSenderIdStr.trim() == normalizedCurrentUserId;
                         
-                        // Extract sender name from message
+                        // Extract sender name from message - prioritize email-based username
                         final senderName = (() {
                           if (message['sender'] is Map) {
                             final sender = message['sender'] as Map<String, dynamic>;
                             
-                            // Get the email or default to empty string
-                            final email = sender['email']?.toString() ?? '';
+                            // First priority: username field (should be email prefix)
+                            final username = sender['username']?.toString();
+                            if (username != null && username.isNotEmpty && username != 'unknown') {
+                              return username;
+                            }
                             
-                            // Extract username from email (part before @) or use user ID
-                            if (email.isNotEmpty) {
+                            // Second priority: extract from email
+                            final email = sender['email']?.toString();
+                            if (email != null && email.isNotEmpty && email != 'unknown@example.com') {
                               return email.split('@')[0];
                             }
                             
-                            // Fallback to username, name, or user ID
-                            return sender['username'] ?? 
-                                   sender['name'] ?? 
-                                   'User${sender['id'] ?? currentSenderIdStr}';
+                            // Third priority: name field
+                            final name = sender['name']?.toString();
+                            if (name != null && name.isNotEmpty && name != 'Unknown') {
+                              return name;
+                            }
+                            
+                            // Last resort: use sender ID
+                            return 'User${sender['id'] ?? currentSenderIdStr}';
                           }
                           return 'User$currentSenderIdStr';
                         })();
