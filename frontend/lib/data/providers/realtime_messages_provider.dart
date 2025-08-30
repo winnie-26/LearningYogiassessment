@@ -62,17 +62,26 @@ class CombinedMessagesNotifier extends StateNotifier<AsyncValue<List<Map<String,
   void _addRealtimeMessage(Map<String, dynamic> message) {
     print('Adding realtime message: $message'); // Debug log
     
-    // Filter out the 'type' field and ensure proper format
+    // Skip if not a new_message type
+    if (message['type'] != 'new_message') {
+      print('Skipping non-new_message type: ${message['type']}');
+      return;
+    }
+    
+    // The message from the server already has the correct format
+    // Just ensure all required fields are present
     final formattedMessage = <String, dynamic>{
-      'id': message['id'],
+      'id': message['id'] ?? DateTime.now().millisecondsSinceEpoch,
       'text': message['text'] ?? '',
-      'sender': message['sender'] ?? {
-        'id': message['user_id'] ?? message['sender_id'],
-        'name': 'Unknown',
-        'email': 'unknown@example.com'
-      },
+      'sender': message['sender'] is Map 
+          ? Map<String, dynamic>.from(message['sender'])
+          : {
+              'id': message['user_id'] ?? 'unknown',
+              'name': 'User${message['user_id'] ?? ''}',
+              'email': 'user${message['user_id'] ?? ''}@example.com',
+            },
       'group_id': message['group_id'],
-      'user_id': message['user_id'] ?? message['sender_id'],
+      'user_id': message['user_id'],
       'created_at': message['created_at'] ?? DateTime.now().toIso8601String(),
     };
     

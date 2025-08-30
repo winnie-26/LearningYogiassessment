@@ -380,10 +380,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           itemCount: messages.length,
                           itemBuilder: (context, index) {
                         final message = messages[index];
-                        final senderMap = message['sender'];
-                        final senderName = senderMap?['name']?.toString() ?? 'Unknown';
+                        final senderMap = message['sender'] is Map ? Map<String, dynamic>.from(message['sender'] as Map) : null;
                         final currentSenderIdStr = (() {
-                          if (senderMap is Map) {
+                          if (senderMap != null) {
                             final raw = senderMap['id'] ?? senderMap['user_id'] ?? senderMap['uid'];
                             if (raw != null) return raw.toString();
                           }
@@ -403,6 +402,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         final showSenderName = index == 0 || (currentSenderIdStr ?? '') != (prevSenderIdStr ?? '');
                         final messageText = message['text']?.toString() ?? '';
                         final isCurrentUser = currentSenderIdStr != null && currentSenderIdStr.trim() == normalizedCurrentUserId;
+                        
+                        // Extract sender name from message
+                        final senderName = message['sender'] is Map 
+                            ? (message['sender']['name'] ?? 'User${message['sender']['id'] ?? ''}') 
+                            : 'User$currentSenderIdStr';
                         
                         // Generate different shades for different users
                         final senderHash = currentSenderIdStr?.hashCode ?? 0;

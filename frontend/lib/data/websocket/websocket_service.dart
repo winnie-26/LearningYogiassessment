@@ -44,6 +44,7 @@ class WebSocketService {
   
   // Notify listeners about connection status changes
   void _notifyConnectionStatus(String status) {
+    print('WebSocket: Connection status changed to: $status');
     _messageController?.add({
       'type': 'connection_status',
       'status': status,
@@ -52,14 +53,15 @@ class WebSocketService {
   }
 
   Future<void> connect(String groupId, String token) async {
-    if (_currentGroupId == groupId && _isConnected) {
-      print('WebSocket: Already connected to group $groupId');
+    if (_isConnected) {
+      print('WebSocket: Already connected');
       return;
     }
-    
-    print('WebSocket: Connecting to group $groupId...');
-    await disconnect();
-    
+
+    print('WebSocket: Connecting to WebSocket server...');
+    print('WebSocket: Group ID: $groupId');
+    print('WebSocket: Token: ${token.substring(0, 10)}...');
+
     try {
       _currentGroupId = groupId;
       _currentToken = token; // Store the token for reconnection
@@ -123,24 +125,63 @@ class WebSocketService {
       _channel!.stream.listen(
         (data) {
           try {
-            print('WebSocket: Received data: $data');
-            final message = jsonDecode(data) as Map<String, dynamic>;
-            print('WebSocket: Parsed message: $message');
+            print('WebSocket: Received raw data: $data');
+            
+            // Decode the JSON message and ensure it's a map
+            final message = jsonDecode(data);
+            if (message is! Map<String, dynamic>) {
+              print('WebSocket: Received non-map message: $message');
+              return;
+            }
+            print('WebSocket: Parsed message: ${message.toString()}');
+            
+            // Log the message type for debugging
+            final messageType = message['type']?.toString() ?? 'unknown';
+            print('WebSocket: Processing message type: $messageType');
             
             // Handle different message types
-            switch (message['type']) {
+            switch (messageType) {
               case 'new_message':
-                print('WebSocket: Forwarding new message to controller');
-                _messageController?.add(message);
+                print('WebSocket: New message received: ${message.toString()}');
+                
+                // Ensure the message has required fields and format it consistently
+                final formattedMessage = Map<String, dynamic>.from(message);
+                
+                // Ensure sender is a map
+                if (formattedMessage['sender'] is! Map) {
+                  formattedMessage['sender'] = {
+                    'id': formattedMessage['user_id'],
+                    'name': 'User${formattedMessage['user_id']}',
+                    'email': 'user${formattedMessage['user_id']}@example.com',
+                  };
+                }
+                
+                // Ensure required fields are present
+                formattedMessage['text'] ??= '';
+                formattedMessage['created_at'] ??= DateTime.now().toIso8601String();
+                
+                print('WebSocket: Forwarding formatted message: $formattedMessage');
+                _messageController?.add(formattedMessage);
                 break;
+                
               case 'pong':
                 print('WebSocket: Received pong');
                 break;
+                
+              case 'auth_success':
+                print('WebSocket: Authentication successful');
+                break;
+                
+              case 'joined_group':
+                print('WebSocket: Successfully joined group');
+                break;
+                
               case 'error':
                 print('WebSocket: Error from server: ${message['message']}');
                 break;
+                
               default:
-                print('WebSocket: Ignoring message type: ${message['type']}');
+                print('WebSocket: Ignoring message type: $messageType');
             }
           } catch (e) {
             print('Error parsing WebSocket message: $e');
