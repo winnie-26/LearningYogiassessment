@@ -247,32 +247,6 @@ class WebSocketServer {
     this.sendMessage(ws, { type: 'error', message: error });
   }
 
-  // Broadcast new message from API to WebSocket clients
-  broadcastNewMessage(groupId, message) {
-    const groupConnections = this.groupConnections.get(parseInt(groupId));
-    if (!groupConnections) {
-      console.log(`[WebSocket] No connections found for group ${groupId}`);
-      return;
-    }
-
-    // Ensure the message has the correct type field for frontend filtering
-    const messageToSend = {
-      ...message,
-      type: 'new_message', // This must match what frontend expects
-    };
-
-    console.log('[WebSocket] Broadcasting message:', messageToSend);
-    const messageString = JSON.stringify(messageToSend);
-
-    groupConnections.forEach((ws) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(messageString);
-      }
-    });
-
-    console.log(`[WebSocket] Broadcasted message to ${groupConnections.size} clients in group ${groupId}`);
-  }
-
   // Heartbeat to keep connections alive
   startHeartbeat() {
     setInterval(() => {
@@ -289,12 +263,39 @@ class WebSocketServer {
 
   // Broadcast new message from API to WebSocket clients
   broadcastNewMessage(groupId, message) {
-    const broadcastMessage = {
+    const groupConnections = this.groupConnections.get(parseInt(groupId));
+    if (!groupConnections) {
+      console.log(`[WebSocket] No connections found for group ${groupId}`);
+      return;
+    }
+
+    // Ensure the message has the correct format for frontend
+    const messageToSend = {
       type: 'new_message',
-      ...message
+      id: message.id || Date.now(),
+      text: message.text || '',
+      group_id: groupId,
+      user_id: message.user_id || message.sender?.id,
+      created_at: message.created_at || new Date().toISOString(),
+      sender: {
+        id: message.sender?.id || message.user_id,
+        name: message.sender?.name || `user_${message.user_id || 'unknown'}`,
+        email: message.sender?.email || `user_${message.user_id || 'unknown'}@example.com`,
+        username: message.sender?.username || (message.sender?.email ? message.sender.email.split('@')[0] : `user_${message.user_id || 'unknown'}`)
+      }
     };
-    
-    this.broadcastToGroup(groupId.toString(), broadcastMessage);
+
+    console.log('[WebSocket] Broadcasting message:', messageToSend);
+    const messageString = JSON.stringify(messageToSend);
+
+    // Send to all clients in the group
+    groupConnections.forEach((ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(messageString);
+      }
+    });
+
+    console.log(`[WebSocket] Broadcasted message to ${groupConnections.size} clients in group ${groupId}`);
   }
 }
 
